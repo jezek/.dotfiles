@@ -1,0 +1,6 @@
+[Default Applications]
+audio/mpeg=audacious.desktop
+audio/x-mpegurl=audacious.desktop
+audio/x-scpls=audacious.desktop
+audio/x-vorbis+ogg=audacious.desktop
+audio/x-wav=audacious.desktop

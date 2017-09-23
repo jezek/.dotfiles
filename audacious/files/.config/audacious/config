@@ -1,0 +1,8 @@
+
+[audacious]
+always_resume_paused=FALSE
+cover_name_include=album,cover,front,folder,cover-front
+filepopup_showprogressbar=TRUE
+
+[statusicon]
+close_to_tray=TRUE
