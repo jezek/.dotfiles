@@ -42,8 +42,9 @@ check_yes_no(){
 run(){
 	echo -e $cGreen$1$cDefault
 	$1
-	echo -e $cYellow"Result: $?"$cDefault
-	return $?
+	res=$?
+	echo -e $cYellow"Result: $res"$cDefault
+	return $res
 }
 
 # update & upgrade
@@ -81,6 +82,7 @@ if ! type git 2>/dev/null; then
 fi
 
 run "ssh -qT git@github.com"
+echo $?
 if [ "$?" = 1 ]; then
 	echo "can connect to git via ssh"
 else
