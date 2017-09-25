@@ -1,50 +1,72 @@
 #! /bin/bash
+
 SUDO=''
 if (( $EUID != 0 )); then
     SUDO='sudo'
 fi
 
-# update & upgrade
-$SUDO apt update
-$SUDO apt upgrade
+# colors
+cDefault='\e[0m'
+cRed='\e[91m'
+cGreen='\e[92m'
+cYellow='\e[93m'
 
 # Yes/no dialog. The first argument is the message that the user will see.
 # If the user enters n/N, send exit 1.
 check_yes_no(){
-    while true; do
-        read -p "$1 [Y/n]: " yn
-        if [ "$yn" = "" ]; then
-            yn='Y'
-        fi
-        case "$yn" in
-            [Yy] )
-                break;;
-            [Nn] )
-                echo "No"
-                return 1;;
-            * )
-                echo "Please answer y or n for yes or no.";;
-        esac
-    done;
+	while true; do
+		default="y"
+		hint="[Y/n]"
+		if [ "$2" = n ]; then
+			default="n"
+			hint="[y/N]"
+		fi
+		read -p "$1 $hint: " yn
+		if [ "$yn" = "" ]; then
+			yn="$default"
+
+		fi
+		case "$yn" in
+			[Yy] )
+				break;;
+			[Nn] )
+				echo "No"
+				return 1;;
+			* )
+				echo -e "${cRed}Please answer y or n for yes or no.${cDefault}";;
+		esac
+	done;
 	echo "Yes"
 }
 
 run(){
-	echo $1
+	echo -e $cGreen$1$cDefault
 	$1
+	echo -e $cYellow"Result: $?"$cDefault
+	return $?
 }
 
-if check_yes_no "turn on sticky keys?"; then
-	if ! type xkbset 2>/dev/null; then
-		echo "xkbset not installed"
-		run "$SUDO apt install xkbset"
-	fi
-  echo ""
-	run "xkbset a sticky -twokey -latchlock"
-	run "xkbset exp =sticky"
-	echo "you should add theese somewhere to startup, or turn on in settings..."
-	read
-fi
+# update & upgrade
+##if check_yes_no "update & upgrade?" "n"; then
+##	$SUDO apt update
+##	$SUDO apt upgrade
+##fi
+##
+##if check_yes_no "turn on sticky keys?" "n"; then
+##	if ! type xkbset 2>/dev/null; then
+##		echo "xkbset not installed"
+##		run "$SUDO apt install xkbset"
+##	fi
+##	if type xkbset 2>/dev/null; then
+##		echo ""
+##		run "xkbset a sticky -twokey -latchlock"
+##		run "xkbset exp =sticky"
+##		echo "you should add theese somewhere to startup, or turn on in settings..."
+##		read
+##	else
+##		echo -e $cRed"xkbset install failed!"$cDefault
+##	fi
+##fi
 
 cd $HOME
 
@@ -53,10 +75,18 @@ if ! type git 2>/dev/null; then
 	echo "need git and git not installed"
 	run "$SUDO apt install git"
 	if ! type git 2>/dev/null; then
-		echo "failed"
+		echo -e $cRed"git install failed!"$cDefault
 		exit 1
 	fi
 fi
+
+run "ssh -qT git@github.com"
+if [ "$?" = 1 ]; then
+	echo "can connect to git via ssh"
+else
+	echo "can NOT connect to git via ssh"
+fi
+exit
 
 DOTFILES=".dotfiles"
 if [ ! -d $DOTFILES ]; then
@@ -175,6 +205,7 @@ run "cp -vilb $VIMFILES/$VIMRC ./$VIMRC"
 
 VIMPLUG="$VIMDIR/autoload/plug.vim"
 if [ -e $VIMPLUG ]; then
+	#TODO fonnt for airline
 	run "vim +PlugInstall +qall"
 else
 	echo "no $VIMPLUG"
