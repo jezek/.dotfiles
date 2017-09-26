@@ -35,7 +35,8 @@ check_yes_no(){
 			default="n"
 			hint="[y/N]"
 		fi
-		read -p "$1 $hint: " yn
+		echo -e -n "$1 $hint: "
+		read yn
 		if [ "$yn" = "" ]; then
 			yn="$default"
 
@@ -54,11 +55,27 @@ check_yes_no(){
 }
 
 run(){
-	echo -e $cGreen$1$cDefault
-	$1
+	if [ $# = 0 ] || [ $# -gt 2 ]; then
+		return 255
+	fi
+	local cmd=$1
+	if [ $# = 2 ]; then
+		local resVar=$1
+		local cmd=$2
+	fi
+	echo -e $cGreen$cmd$cDefault
+	resVal=`$cmd`
 	res=$?
 	if [ "$debug" = 1 ]; then
-		echo -e $cYellow"Result: $res"$cDefault
+		local rc=$cGreen
+		if [ ! $res = 0 ]; then
+			local rc=$cRed
+		fi
+		echo -e "Result: "$rc$res$cDefault
+		echo -e Result Value: $cYellow$resVal$cDefault
+	fi
+	if [ $# = 2 ]; then
+		eval $resVar="'$resVal'"
 	fi
 	return $res
 }
@@ -102,10 +119,9 @@ isCmd(){
 ##cd $HOME
 
 
-essentials=(git curl)
+essentials=(apt git curl ssh)
 missing=()
 for cmd in "${essentials[@]}"; do
-	echo "checking if $cmd is missing"
 	if ! isCmd $cmd; then
 		missing+=($cmd)
 	fi
@@ -115,7 +131,7 @@ if [ ! ${#missing[@]} = 0 ]; then
 	echo "we need theese essential programs for this script:"
 	echo -e $cBlue${missing[@]}$cDefault
 	if check_yes_no "install and continue?"; then
-		local installed=()
+		installed=()
 		for pkg in ${missing[@]}; do
 			install $pkg
 			if ! isCmd $pkg; then
@@ -129,6 +145,7 @@ if [ ! ${#missing[@]} = 0 ]; then
 			fi
 			installed+=($pkg)
 		done
+		unset installed
 	else #check_yes_no "install and continue?"
 		exit 1
 	fi #check_yes_no "install and continue?"
@@ -139,11 +156,48 @@ unset essentials
 
 run "ssh -qT git@github.com"
 gsa=$?
-if [ "$gsa" = 1 ]; then
-	echo "can connect to git via ssh"
-else
-	echo "can NOT connect to git via ssh"
+if [ ! "$gsa" = 1 ]; then
+	if check_yes_no "do you want use your github with ssh on this device?"; then
+		pubKey=""
+		sshDir="$HOME/.ssh" 
+		sshDirPubKey=$sshDir"/id_rsa.pub"
+		if [ -e $sshDirPubKey ]; then
+			pubKey=$sshDirPubKey
+		fi
+		if [ -z $pubKey ]; then
+			if check_yes_no "no public key ($sshDirPubKey) found. create new?"; then
+				if ! isCmd "ssh-keygen"; then
+					if check_yes_no "this operation needs ${cBlue}ssh-keygen${cDefault}. install?"; then
+						install "ssh-keygen"
+					fi
+				fi
+				if isCmd "ssh-keygen"; then
+					comment=$HOSTNAME
+					if check_yes_no "ssh key will be generated with comment \"$comment\". change it?" "n"; then
+						read -p "ssh key comment: " comment
+					fi
+					if [ ! -z $comment ]; then
+						comment=" -C \"$comment\""
+					fi
+					#TODO writing
+					run "ssh-keygen -t rsa -b 4096 $comment"
+				else
+					echo -e $cRed"generating ssh key failed"$cDefault
+				fi
+				if [ -e $sshDirPubKey ]; then
+					pubKey=$sshDirPubKey
+				fi
+			fi
+		fi
+		if [ ! -z $pubKey ]; then
+			#TODO
+			echo "got pubkey: $pubKey"
+		else
+			echo $cRed"no public key found, github with ssh access not configured"$cDefault
+		fi
+	fi
 fi
+unset gsa
 #TODO finish this
 exit
 
