@@ -201,45 +201,30 @@ if [ ! "$res" = 1 ]; then
 			fi
 		fi
 		if [ ! -z $pubKeyFile ] && check_yes_no "do you want to add your public key to github through api?"; then
-			# inspired by https://gist.github.com/ccashwell/4042214
-
-			read -s -p "GitHub Password: " githubPasswd
-			if [ ! "$githubName" = "" ] && [ ! "$githubPasswd" = "" ]; then
-				githubKeyTitle=$HOSTNAME
-				if [ ! -z $comment ]; then
-					githubKeyTitle=$comment
-				fi
-				fingerprint=`date +"%F %T.%N"`
-				runRes githubToken "curl -u $githubName:$githubPasswd --silent -d '{\"scopes\":[\"write:public_key\"], \"note\":\".dotfiles install.sh script @ $HOSTNAME\", \"fingerprint\":\"$fingerprint\"}' \"https://api.github.com/authorizations\" | grep -o '\"token\":\\s*\"[^\"]\\+\"' | grep -o '[0-9A-Fa-f]\\{40\\}'"
+			githubKeyTitle=$HOSTNAME
+			if [ ! -z $comment ]; then
+				githubKeyTitle=$comment
+			fi
+			runRes pubKey "cat $pubKeyFile"
+			res=$?
+			if [ $res = 0 ]; then
+				run "curl -u \"$githubName\" -X POST -H \"Content-type: application/json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys\""
 				res=$?
 				if [ $res = 0 ]; then
-					runRes pubKey "cat $pubKeyFile"
+					run "ssh -qT git@github.com"
 					res=$?
-					if [ $res = 0 ]; then
-						run "curl -X POST -H \"Content-type: application/json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys?access_token=$githubToken\""
-						res=$?
-						if [ $res = 0 ]; then
-							run "ssh -qT git@github.com"
-							res=$?
-							if [ "$res" = 1 ]; then
-								githubSsh=1
-							else
-								echo -e $cRed"someting failed, github with ssh access not configured"$cDefault
-							fi
-						else
-							echo -e $cRed"Can not set key to gitHub"$cDefault
-						fi
+					if [ "$res" = 1 ]; then
+						githubSsh=1
 					else
-						echo -e $cRed"Can not load key from "$cDefault$pubKeyFile
+						echo -e $cRed"someting failed, github with ssh access not configured"$cDefault
 					fi
-					unset pubKey
 				else
-					echo -e $cRed"can't get token from gitHub"$cDefault
+					echo -e $cRed"Can not set key to gitHub as $githubName"$cDefault
 				fi
 			else
-				echo -e $cRed"can't set up your gitHub ssh key without authorization"$cDefault
+				echo -e $cRed"Can not load key from "$cDefault$pubKeyFile
 			fi
-
+			unset pubKey
 		else
 			echo -e $cRed"no public key found, github with ssh access not configured"$cDefault
 		fi
