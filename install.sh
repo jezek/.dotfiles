@@ -2,10 +2,10 @@
 
 # colors
 cDefault='\e[0m'
-cRed='\e[91m'
-cGreen='\e[92m'
-cBlue='\e[94m'
-cYellow='\e[93m'
+cRed='\e[91m' # errors
+cGreen='\e[92m' # commands
+cBlue='\e[94m' # packages
+cYellow='\e[93m' # results
 
 debug=0
 for arg in $@; do
@@ -55,29 +55,36 @@ check_yes_no(){
 }
 
 run(){
-	if [ $# = 0 ] || [ $# -gt 2 ]; then
+	if [ ! $# = 1 ]; then
+		(>&2 echo -e $cRed"run: need 1 argument, got $#: "$cDefault$@)
 		return 255
 	fi
-	local cmd=$1
-	if [ $# = 2 ]; then
-		local resVar=$1
-		local cmd=$2
-	fi
-	echo -e $cGreen$cmd$cDefault
-	resVal=`$cmd`
-	res=$?
+	(>&2 echo -e $cGreen$1$cDefault)
+	eval $1
+	local res=$?
 	if [ "$debug" = 1 ]; then
 		local rc=$cGreen
 		if [ ! $res = 0 ]; then
 			local rc=$cRed
 		fi
-		echo -e "Result: "$rc$res$cDefault
-		echo -e Result Value: $cYellow$resVal$cDefault
-	fi
-	if [ $# = 2 ]; then
-		eval $resVar="'$resVal'"
+		(>&2 echo -e "Result: "$rc$res$cDefault)
 	fi
 	return $res
+}
+runRes(){
+	if [ ! $# = 2 ]; then
+		(>&2 echo -e $cRed"runRes: need 2 argument, got $#: "$cDefault$@)
+		return 255
+	fi
+	local resVar=$1
+	local cmd=$2
+	resVal=`run "$cmd"`
+	local r=$?
+	eval $resVar="'$resVal'"
+	if [ "$debug" = 1 ]; then
+		(>&2 echo -e Result Value: $cYellow$resVal$cDefault)
+	fi
+	return $r
 }
 
 install(){
@@ -89,6 +96,10 @@ isCmd(){
 	type $1 >/dev/null 2>&1
 	return $?
 }
+
+#echo "testing:"
+#echo "done"
+#exit
 
 ### update & upgrade
 ##if check_yes_no "update & upgrade?" "n"; then
@@ -126,7 +137,7 @@ for cmd in "${essentials[@]}"; do
 		missing+=($cmd)
 	fi
 done
-echo "missing: ${missing[@]}"
+
 if [ ! ${#missing[@]} = 0 ]; then
 	echo "we need theese essential programs for this script:"
 	echo -e $cBlue${missing[@]}$cDefault
@@ -153,19 +164,20 @@ fi
 unset missing
 unset essentials
 
-
+githubName="jezek"
+githubSsh=0
 run "ssh -qT git@github.com"
-gsa=$?
-if [ ! "$gsa" = 1 ]; then
+res=$?
+if [ ! "$res" = 1 ]; then
 	if check_yes_no "do you want use your github with ssh on this device?"; then
-		pubKey=""
-		sshDir="$HOME/.ssh" 
-		sshDirPubKey=$sshDir"/id_rsa.pub"
-		if [ -e $sshDirPubKey ]; then
-			pubKey=$sshDirPubKey
+		pubKeyFile=""
+		sshDir="$HOME/.ssh"
+		sshPubKeyFile=$sshDir"/id_rsa.pub"
+		if [ -e $sshPubKeyFile ]; then
+			pubKeyFile=$sshPubKeyFile
 		fi
-		if [ -z $pubKey ]; then
-			if check_yes_no "no public key ($sshDirPubKey) found. create new?"; then
+		if [ -z $pubKeyFile ]; then
+			if check_yes_no "no public key ($sshPubKeyFile) found. create new?"; then
 				if ! isCmd "ssh-keygen"; then
 					if check_yes_no "this operation needs ${cBlue}ssh-keygen${cDefault}. install?"; then
 						install "ssh-keygen"
@@ -177,47 +189,85 @@ if [ ! "$gsa" = 1 ]; then
 						read -p "ssh key comment: " comment
 					fi
 					if [ ! -z $comment ]; then
-						comment=" -C \"$comment\""
+						commentAttr=" -C \"$comment\""
 					fi
-					#TODO writing
-					run "ssh-keygen -t rsa -b 4096 $comment"
+					run "ssh-keygen -t rsa -b 4096 $commentAttr"
 				else
 					echo -e $cRed"generating ssh key failed"$cDefault
 				fi
-				if [ -e $sshDirPubKey ]; then
-					pubKey=$sshDirPubKey
+				if [ -e $sshPubKeyFile ]; then
+					pubKeyFile=$sshPubKeyFile
 				fi
 			fi
 		fi
-		if [ ! -z $pubKey ]; then
-			#TODO
-			echo "got pubkey: $pubKey"
+		if [ ! -z $pubKeyFile ] && check_yes_no "do you want to add your public key to github through api?"; then
+			# inspired by https://gist.github.com/ccashwell/4042214
+
+			read -s -p "GitHub Password: " githubPasswd
+			if [ ! "$githubName" = "" ] && [ ! "$githubPasswd" = "" ]; then
+				githubKeyTitle=$HOSTNAME
+				if [ ! -z $comment ]; then
+					githubKeyTitle=$comment
+				fi
+				fingerprint=`date +"%F %T.%N"`
+				runRes githubToken "curl -u $githubName:$githubPasswd --silent -d '{\"scopes\":[\"write:public_key\"], \"note\":\".dotfiles install.sh script @ $HOSTNAME\", \"fingerprint\":\"$fingerprint\"}' \"https://api.github.com/authorizations\" | grep -o '\"token\":\\s*\"[^\"]\\+\"' | grep -o '[0-9A-Fa-f]\\{40\\}'"
+				res=$?
+				if [ $res = 0 ]; then
+					runRes pubKey "cat $pubKeyFile"
+					res=$?
+					if [ $res = 0 ]; then
+						run "curl -X POST -H \"Content-type: application/json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys?access_token=$githubToken\""
+						res=$?
+						if [ $res = 0 ]; then
+							run "ssh -qT git@github.com"
+							res=$?
+							if [ "$res" = 1 ]; then
+								githubSsh=1
+							else
+								echo -e $cRed"someting failed, github with ssh access not configured"$cDefault
+							fi
+						else
+							echo -e $cRed"Can not set key to gitHub"$cDefault
+						fi
+					else
+						echo -e $cRed"Can not load key from "$cDefault$pubKeyFile
+					fi
+					unset pubKey
+				else
+					echo -e $cRed"can't get token from gitHub"$cDefault
+				fi
+			else
+				echo -e $cRed"can't set up your gitHub ssh key without authorization"$cDefault
+			fi
+
 		else
-			echo $cRed"no public key found, github with ssh access not configured"$cDefault
+			echo -e $cRed"no public key found, github with ssh access not configured"$cDefault
 		fi
 	fi
+else
+	githubSsh=1
 fi
-unset gsa
+unset res
 #TODO finish this
 exit
 
-DOTFILES=".dotfiles"
-if [ ! -d $DOTFILES ]; then
-	GITDOTFILES="https://github.com/jezek/.dotfiles.git"
+dotfilesDir=".dotfiles"
+if [ ! -d $dotfilesDir ]; then
+	GITDOTFILES="https://github.com/$githubName/.dotfiles.git"
 	if check_yes_no "use ssh for git .dotfiles?"; then
 		#TODO check for keys, generate, forward to git
-		GITDOTFILES="git@github.com:jezek/.dotfiles.git"
+		GITDOTFILES="git@github.com:$githubName/.dotfiles.git"
 	fi
 	run "git clone $GITDOTFILES"
-	if [ ! -d $DOTFILES ]; then
-		echo "clonning $DOTFILES from git failed"
+	if [ ! -d $dotfilesDir ]; then
+		echo "clonning $dotfilesDir from git failed"
 		exit 1
 	fi
 else
-	echo "$DOTFILES are present"
+	echo "$dotfilesDir are present"
 fi
 
-GITFILES="$DOTFILES/git/files"
+GITFILES="$dotfilesDir/git/files"
 GITCONFIG=".gitconfig"
 if [ -e "$GITFILES/$GITCONFIG" ]; then
 	if check_yes_no "configure $GITCONFIG from $GITFILES/$GITCONFIG?"; then
@@ -240,7 +290,7 @@ if [ -e "$GITFILES/$GITCONFIG" ]; then
 fi
 
 PROFILE=".profile"
-DOTPROFILE="$DOTFILES/shell/profile"
+DOTPROFILE="$dotfilesDir/shell/profile"
 if [ -e $DOTPROFILE ]; then
 	if check_yes_no "use $DOTPROFILE as $PROFILE?"; then
 		if [ -e $PROFILE ]; then
@@ -271,7 +321,7 @@ fi
 if isCmd vim; then
 	if check_yes_no "configure vim?"; then
 
-		VIMFILES="$DOTFILES/vim/files"
+		VIMFILES="$dotfilesDir/vim/files"
 		if [ ! -d $VIMFILES ]; then
 			echo "directory $VIMFILES does not exists"
 			exit 1
@@ -351,7 +401,7 @@ if ! isCmd mc; then
 fi
 
 if isCmd mc; then
-	MCFILES="$DOTFILES/mc/files"
+	MCFILES="$dotfilesDir/mc/files"
 	if [ -d $MCFILES ]; then
 		if check_yes_no "configure mc from $MCFILES?"; then
 			run "cp -vibr $MCFILES/.config ."
@@ -382,7 +432,7 @@ if ! isCmd audacious; then
 fi
 
 if isCmd audacious; then
-	AUDACIOUSFILES="$DOTFILES/audacious/files"
+	AUDACIOUSFILES="$dotfilesDir/audacious/files"
 	if [ -d $AUDACIOUSFILES ]; then
 		if check_yes_no "configure audacious from $AUDACIOUSFILES?"; then
 			run "cp -vibr $AUDACIOUSFILES/.config ."
