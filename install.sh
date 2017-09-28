@@ -452,7 +452,7 @@ if isCmd firefox; then
 	fi
 fi
 
-fingerprintPpaUrl="https://launchpad.net/~fingerprint/+archive/ubuntu/fprint"
+fingerprintPpaUrl="https://launchpad.net/~fingerprint/+archive/ubuntu/fingerprint-gui"
 runRes fingerprintSupportedDevices "curl $fingerprintPpaUrl | sed -e 's/<[^>]*>//g' | grep -o '[0-9a-f]\\{4\\}:[0-9a-f]\\{4\}'"
 res=$?
 if [ $res = 0 ]; then
@@ -480,9 +480,10 @@ fi
 
 if [ ! -z ${fingerprintSupported+x} ]; then
 	if [ ! $fingerprintSupported = 0 ]; then
-		fingerprintPpa="ppa:fingerprint/fprint"
-		found=0
 		echo "fingerprint supported"
+
+		fingerprintPpa="ppa:fingerprint/fingerprint-gui"
+		found=0
 		while read -r ppa; do
 			runRes ppaUser "echo $ppa | cut -d/ -f4"
 			runRes ppaName "echo $ppa | cut -d/ -f5"
@@ -494,16 +495,15 @@ if [ ! -z ${fingerprintSupported+x} ]; then
 		if [ $found = 0 ]; then
 			run $SUDO" add-apt-repository $fingerprintPpa"
 			run $SUDO" apt update"
-			run $SUDO" apt upgrade"
 		fi
-		if ! isCmd "fprint_demo"; then
-		  run $SUDO" apt install libfprint0 fprint-demo libpam-fprintd"
-			if isCmd "fprint_demo"; then
+		if ! isCmd "fingerprint-gui"; then
+		  run $SUDO" apt install libbsapi policykit-1-fingerprint-gui fingerprint-gui"
+			if isCmd "fingerprint-gui"; then
 				echo "fingerprint support installed"
-				echo -e "to test and configure fingerprint run ${cGreen}fprint-demo${cDefault}"
+				echo -e "to configure fingerprint run ${cGreen}fingerprint-gui${cDefault}"
 				echo "more at: $fingerprintPpaUrl"
-				if check_yes_no "run ${cGreen}fprint-demo${cDefault}?"; then
-					run "fprint_demo"
+				if check_yes_no "run ${cGreen}fingerprint-gui${cDefault}?"; then
+					run "fingerprint-gui"
 				fi
 			else
 				echo -e $cRed"fingerprint not installed"$cDefault
