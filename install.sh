@@ -97,6 +97,10 @@ isCmd(){
 	return $?
 }
 
+installedPpa() {
+ run "find /etc/apt/ -name '*.list' -print0 | xargs -0 grep -ho '^deb http://ppa.launchpad.net/[a-z0-9\\-]\\+/[a-z0-9\\-]\\+'"
+}
+
 #echo "testing:"
 #echo "done"
 #exit
@@ -130,7 +134,7 @@ fi
 cd $HOME
 
 
-essentials=(apt git curl ssh sed)
+essentials=(apt add-apt-repository git curl ssh sed)
 missing=()
 for cmd in "${essentials[@]}"; do
 	if ! isCmd $cmd; then
@@ -446,4 +450,72 @@ if isCmd firefox; then
 		echo "purge failed, uninstall manualy"
 		read
 	fi
+fi
+
+fingerprintPpaUrl="https://launchpad.net/~fingerprint/+archive/ubuntu/fprint"
+runRes fingerprintSupportedDevices "curl $fingerprintPpaUrl | sed -e 's/<[^>]*>//g' | grep -o '[0-9a-f]\\{4\\}:[0-9a-f]\\{4\}'"
+res=$?
+if [ $res = 0 ]; then
+	runRes usbDevices "lsusb | grep -o '[0-9a-f]\\{4\\}:[0-9a-f]\\{4\}'"
+	res=$?
+	if [ $res = 0 ]; then
+		fingerprintSupported=0
+		for device in $usbDevices; do
+			for supported in $fingerprintSupportedDevices; do
+				if [ "$device" = $supported ]; then
+					fingerprintSupported=1
+					break 2
+				fi
+			done
+		done
+		unset device
+		unset supported
+
+	else
+		echo -e $cRed"can not fetch usb devices"$cDefault
+	fi
+else
+	echo -e $cRed"can not fetch supported fprint devices"$cDefault
+fi
+
+if [ ! -z ${fingerprintSupported+x} ]; then
+	if [ ! $fingerprintSupported = 0 ]; then
+		fingerprintPpa="ppa:fingerprint/fprint"
+		found=0
+		echo "fingerprint supported"
+		while read -r ppa; do
+			runRes ppaUser "echo $ppa | cut -d/ -f4"
+			runRes ppaName "echo $ppa | cut -d/ -f5"
+			if [ "ppa:$ppaUser/$ppaName" = $fingerprintPpa ]; then
+				found=1
+				break
+			fi
+		done <<< $(installedPpa)
+		if [ $found = 0 ]; then
+			run $SUDO" add-apt-repository $fingerprintPpa"
+			run $SUDO" apt update"
+			run $SUDO" apt upgrade"
+		fi
+		if ! isCmd "fprint_demo"; then
+		  run $SUDO" apt install libfprint0 fprint-demo libpam-fprintd"
+			if isCmd "fprint_demo"; then
+				echo "fingerprint support installed"
+				echo -e "to test and configure fingerprint run ${cGreen}fprint-demo${cDefault}"
+				echo "more at: $fingerprintPpaUrl"
+				if check_yes_no "run ${cGreen}fprint-demo${cDefault}?"; then
+					run "fprint_demo"
+				fi
+			else
+				echo -e $cRed"fingerprint not installed"$cDefault
+			fi
+		fi
+		unset ppaName
+		unset ppaUser
+		unset ppa
+		unset found
+	else
+		echo "fingerprint NOT supported"
+	fi
+else
+	echo "don't know, if fingerprint supported"
 fi
