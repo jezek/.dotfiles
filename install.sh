@@ -101,36 +101,36 @@ isCmd(){
 #echo "done"
 #exit
 
-### update & upgrade
-##if check_yes_no "update & upgrade?" "n"; then
-##	$SUDO apt update
-##	$SUDO apt upgrade
-##fi
-##
-##if check_yes_no "turn on sticky keys?" "n"; then
-##	xkbsetinstall=0
-##	if ! isCmd xkbset; then
-##		echo "need xkbset, which is not installed"
-##		if check_yes_no "install xkbset?"; then
-##			xkbsetinstall=1
-##			install "xkbset"
-##		fi
-##	fi
-##	if isCmd xkbset; then
-##		echo ""
-##		run "xkbset a sticky -twokey -latchlock"
-##		run "xkbset exp =sticky"
-##		echo "you should add theese somewhere to startup, or turn on in settings..."
-##		read
-##	elif [ "$xkbsetinstall" = 1 ]; then
-##		echo -e $cRed"xkbset install failed!"$cDefault
-##	fi
-##fi
-##
-##cd $HOME
+# update & upgrade
+if check_yes_no "update & upgrade?" "n"; then
+	$SUDO apt update
+	$SUDO apt upgrade
+fi
+
+if check_yes_no "turn on sticky keys?" "n"; then
+	xkbsetinstall=0
+	if ! isCmd xkbset; then
+		echo "need xkbset, which is not installed"
+		if check_yes_no "install xkbset?"; then
+			xkbsetinstall=1
+			install "xkbset"
+		fi
+	fi
+	if isCmd xkbset; then
+		echo ""
+		run "xkbset a sticky -twokey -latchlock"
+		run "xkbset exp =sticky"
+		echo "you should add theese somewhere to startup, or turn on in settings..."
+		read
+	elif [ "$xkbsetinstall" = 1 ]; then
+		echo -e $cRed"xkbset install failed!"$cDefault
+	fi
+fi
+
+cd $HOME
 
 
-essentials=(apt git curl ssh)
+essentials=(apt git curl ssh sed)
 missing=()
 for cmd in "${essentials[@]}"; do
 	if ! isCmd $cmd; then
@@ -165,6 +165,7 @@ unset missing
 unset essentials
 
 githubName="jezek"
+github="https://github.com/$githubName"
 githubSsh=0
 run "ssh -qT git@github.com"
 res=$?
@@ -233,23 +234,19 @@ else
 	githubSsh=1
 fi
 unset res
-#TODO finish this
-exit
+
+if [ $githubSsh = 1 ]; then
+	github="git@github.com:$githubName"
+fi
 
 dotfilesDir=".dotfiles"
 if [ ! -d $dotfilesDir ]; then
-	GITDOTFILES="https://github.com/$githubName/.dotfiles.git"
-	if check_yes_no "use ssh for git .dotfiles?"; then
-		#TODO check for keys, generate, forward to git
-		GITDOTFILES="git@github.com:$githubName/.dotfiles.git"
-	fi
-	run "git clone $GITDOTFILES"
+	gitdotfiles=""
+	run "git clone $github/.dotfiles.git"
 	if [ ! -d $dotfilesDir ]; then
 		echo "clonning $dotfilesDir from git failed"
 		exit 1
 	fi
-else
-	echo "$dotfilesDir are present"
 fi
 
 GITFILES="$dotfilesDir/git/files"
@@ -429,7 +426,7 @@ if isCmd audacious; then
 fi
 
 
-if ! type chromium-browser 2>/dev/null; then
+if ! isCmd chromium-browser; then
 	echo "chromium not found"
 	if check_yes_no "install chromium?"; then
 		install "chromium-browser"
