@@ -1,0 +1,28 @@
+alias ll='ls -lF --group-directories-first'
+alias lla='ls -lFA --group-directories-first'
+
+isCmd(){
+	type $1 >/dev/null 2>&1
+}
+
+uopen() {
+	if isCmd gnome-open; then
+		command gnome-open $* & 
+		exit
+	fi
+	if isCmd xdg-open; then
+		command xdg-open $* & 
+		exit
+	fi
+	echo "how???"
+	exit 1
+}
+alias o=uopen
+
+cdls() {
+  cd $1;ls -CF --group-directories-first $2
+}
+alias cl=cdls
+
+function mkdircd () { mkdir -p "$@" && eval cd "\"\$$#\""; }
+alias md=mkdircd
