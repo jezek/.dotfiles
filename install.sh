@@ -501,7 +501,10 @@ if [ ! -z ${fingerprintSupported+x} ]; then
 			if isCmd "fingerprint-gui"; then
 				echo "fingerprint support installed"
 				echo -e "to configure fingerprint run ${cGreen}fingerprint-gui${cDefault}"
-				echo "more at: $fingerprintPpaUrl"
+				echo -e $cRed"GNOME and KDE users WARNING:"$cDefault
+				echo "if uninstalling, see Uninstall section at: $fingerprintPpaUrl"
+				echo ""
+
 				if check_yes_no "run ${cGreen}fingerprint-gui${cDefault}?"; then
 					run "fingerprint-gui"
 				fi
