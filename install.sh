@@ -109,6 +109,23 @@ installedPpa() {
  run "find /etc/apt/ -name '*.list' -print0 | xargs -0 grep -ho '^deb http://ppa.launchpad.net/[a-z0-9\\-]\\+/[a-z0-9\\-]\\+'"
 }
 
+function backup() {
+	local i
+	for i in $*; do 
+		echo $i 
+		if [ -e $i ]; then 
+			echo -e "${cFile}$i${cNone} exists"
+			if check_yes_no "backup ${cFile}$i${cNone}?"; then
+				local backup="$i~"
+				echo -e "backing up to ${cFile}$backup${cNone}"
+				run "mv -ib $i $backup"
+			else
+				run "rm $i"
+			fi
+		fi
+	done
+}
+
 essentials=(apt add-apt-repository git curl ssh sed)
 missing=()
 for cmd in "${essentials[@]}"; do
@@ -146,6 +163,7 @@ unset essentials
 cd $HOME
 
 #echo "testing:"
+#
 #
 #echo "done"
 #exit
@@ -301,38 +319,73 @@ if [ -e $DOTPROFILE ]; then
 	fi
 fi
 
-bashrc=".bashrc"
-dotBashrcFile="$dotfilesDir/bash/bashrc"
-if [ -e $dotBashrcFile ]; then
-	if check_yes_no "use ${cFile}$dotBashrcFile${cNone} as ${cFile}$bashrc${cNone}?"; then
-		if [ -e $bashrc ]; then
-			echo "$bashrc exists"
-			if check_yes_no "backup ${cFile}$bashrc${cNone}?"; then
-				bashrcBackup="$bashrc.bak"
-				echo "backing up to ${cFile}$bashrcBackup${cNone}"
-				run "mv $bashrc $bashrcBackup"
-			else
-				run "rm $bashrc"
-			fi
+if ! isCmd bash; then
+	if check_yes_no "install ${cPkg}bash${cNone}?"; then
+		install bash
+		if ! isCmd bash; then
+			echo -e $cErr"failed"$cNone
 		fi
-		run "cp -vilb $dotBashrcFile $bashrc"
 	fi
 fi
-bashAliases=".bash_aliases"
-dotBashAliasesFile="$dotfilesDir/bash/bash_aliases"
-if [ -e $dotBashAliasesFile ]; then
-	if check_yes_no "use ${cFile}$dotBashAliasesFile${cNone} as ${cFile}$bashAliases${cNone}?"; then
-		if [ -e $bashAliases ]; then
-			echo "$bashAliases exists"
-			if check_yes_no "backup ${cFile}$bashAliases${cNone}?"; then
-				bashAliasesBackup="$bashAliases.bak"
-				echo "backing up to ${cFile}$bashAliasesBackup${cNone}"
-				run "mv $bashAliases $bashAliasesBackup"
-			else
-				run "rm $bashAliases"
+if isCmd bash; then
+	bashrc=".bashrc"
+	dotBashrcFile="$dotfilesDir/bash/bashrc"
+	if [ -e $dotBashrcFile ]; then
+		if [ ! $bashrc -ef $dotBashrcFile ]; then
+			if check_yes_no "use ${cFile}$dotBashrcFile${cNone} as ${cFile}$bashrc${cNone}?"; then
+				backup $bashrc
+				run "cp -vilb $dotBashrcFile $bashrc"
 			fi
 		fi
-		run "cp -vilb $dotBashAliasesFile $bashAliases"
+	fi
+	bashAliases=".bash_aliases"
+	dotBashAliasesFile="$dotfilesDir/bash/bash_aliases"
+	if [ -e $dotBashAliasesFile ]; then
+		if [ ! $bashAliases -ef $dotBashAliasesFile ]; then
+			if check_yes_no "use ${cFile}$dotBashAliasesFile${cNone} as ${cFile}$bashAliases${cNone}?"; then
+				backp $bashAliases
+				run "cp -vilb $dotBashAliasesFile $bashAliases"
+			fi
+		fi
+	fi
+fi
+
+if ! isCmd zsh; then
+	if check_yes_no "install ${cPkg}zsh${cNone}?"; then
+		install zsh
+		if ! isCmd zsh; then
+			echo -e $cErr"failed"$cNone
+		fi
+	fi
+fi
+ohmyzshDir=".oh-my-zsh"
+zshrc=".zshrc"
+ohmyzshGithubUrl="git://github.com/robbyrussell/oh-my-zsh.git"
+dotfilesOhmyzshZshrc="$dotfilesDir/oh-my-zsh/zshrc"
+if isCmd zsh && [ ! -d $ohmyzshDir ]; then
+	if check_yes_no "install oh-my-zsh to ${cDir}$ohmyzshDir${cNone}?"; then
+		run "git clone $ohmyzshGithubUrl $ohmyzshDir"
+		if [ -d $ohmyzshDir ];then
+			if [ ! $zshrc -ef $dotfilesOhmyzshZshrc ]; then
+				backup $zshrc
+				run "cp -vibl $dotfilesOhmyzshZshrc $zshrc"
+				if [ -e $zshrc ]; then
+					if isCmd chsh && check_yes_no "make zsh your default shell?"; then
+						run "chsh -s $(which zsh)"
+						res=$?
+						if [ $res = 0 ];then
+							echo -e "${cCmd}zsh${cNone} should be your default shell after next login"
+						else
+							echo -e $cErr"failed"$cNone
+						fi
+					fi
+				else
+					echo -e $cErr"linking ${cFile}$dotfilesOhmyzshZshrc${cNone} to ${cFile}$zshrc${cNone}" 
+				fi
+			fi
+		else
+			echo -e $cErr"intall failed"$cNone
+		fi
 	fi
 fi
 
