@@ -161,6 +161,7 @@ unset missing
 unset essentials
 
 cd $HOME
+dotfilesDir=".dotfiles"
 
 #echo "testing:"
 #
@@ -270,7 +271,6 @@ if [ $githubSsh = 1 ]; then
 	github="git@github.com:$githubName"
 fi
 
-dotfilesDir=".dotfiles"
 if [ ! -d $dotfilesDir ]; then
 	gitdotfiles=""
 	run "git clone $github/.dotfiles.git"
@@ -339,12 +339,12 @@ if isCmd bash; then
 		fi
 	fi
 	bashAliases=".bash_aliases"
-	dotBashAliasesFile="$dotfilesDir/bash/bash_aliases"
-	if [ -e $dotBashAliasesFile ]; then
-		if [ ! $bashAliases -ef $dotBashAliasesFile ]; then
-			if check_yes_no "use ${cFile}$dotBashAliasesFile${cNone} as ${cFile}$bashAliases${cNone}?"; then
+	dotAliasesFile="$dotfilesDir/aliases/aliases"
+	if [ -e $dotAliasesFile ]; then
+		if [ ! $bashAliases -ef $dotAliasesFile ]; then
+			if check_yes_no "use ${cFile}$dotAliasesFile${cNone} as ${cFile}$bashAliases${cNone}?"; then
 				backp $bashAliases
-				run "cp -vilb $dotBashAliasesFile $bashAliases"
+				run "cp -vilb $dotAliasesFile $bashAliases"
 			fi
 		fi
 	fi
@@ -358,19 +358,19 @@ if ! isCmd zsh; then
 		fi
 	fi
 fi
-ohmyzshDir=".oh-my-zsh"
+zplugDir=".zplug"
 zshrc=".zshrc"
-ohmyzshGithubUrl="git://github.com/robbyrussell/oh-my-zsh.git"
-dotfilesOhmyzshZshrc="$dotfilesDir/oh-my-zsh/zshrc"
-if isCmd zsh && [ ! -d $ohmyzshDir ]; then
-	if check_yes_no "install oh-my-zsh to ${cDir}$ohmyzshDir${cNone}?"; then
-		run "git clone $ohmyzshGithubUrl $ohmyzshDir"
-		if [ -d $ohmyzshDir ];then
-			if [ ! $zshrc -ef $dotfilesOhmyzshZshrc ]; then
+zplugGithubUrl="git://github.com/zplug/zplug.git"
+dotfilesZplugZshrc="$dotfilesDir/zplug/zshrc"
+if isCmd zsh && [ ! -d $zplugDir ]; then
+	if check_yes_no "install zplug to ${cDir}$zplugDir${cNone}?"; then
+		run "git clone $zplugGithubUrl $zplugDir"
+		if [ -d $zplugDir ];then
+			if [ ! $zshrc -ef $dotfilesZplugZshrc ]; then
 				backup $zshrc
-				run "cp -vibl $dotfilesOhmyzshZshrc $zshrc"
+				run "cp -vibl $dotfilesZplugZshrc $zshrc"
 				if [ -e $zshrc ]; then
-					if isCmd chsh && check_yes_no "make zsh your default shell?"; then
+					if isCmd chsh && [ ! "$(which zsh)" = $SHELL ] && check_yes_no "make zsh your default shell?"; then
 						run "chsh -s $(which zsh)"
 						res=$?
 						if [ $res = 0 ];then
@@ -380,11 +380,11 @@ if isCmd zsh && [ ! -d $ohmyzshDir ]; then
 						fi
 					fi
 				else
-					echo -e $cErr"linking ${cFile}$dotfilesOhmyzshZshrc${cNone} to ${cFile}$zshrc${cNone}" 
+					echo -e $cErr"linking ${cFile}$dotfilesZplugZshrc${cNone} to ${cFile}$zshrc${cNone}" 
 				fi
 			fi
 		else
-			echo -e $cErr"intall failed"$cNone
+			echo -e $cErr"install failed"$cNone
 		fi
 	fi
 fi
