@@ -2,6 +2,7 @@ source ~/.zplug/init.zsh
 
 zplug "zsh-users/zsh-syntax-highlighting", defer:2
 zplug "zsh-users/zsh-history-substring-search", defer:2
+zplug "psprint/history-search-multi-word", defer:2
 
 zplug "robbyrussell/oh-my-zsh", use:"lib/*.zsh"
 zplug "plugins/git",   from:oh-my-zsh
@@ -16,7 +17,7 @@ if ! zplug check --verbose; then
 fi
 
 # Then, source plugins and add commands to $PATH
-zplug load --verbose
+zplug load
 
 if zplug check zsh-users/zsh-history-substring-search; then
   bindkey '^[[1;5A' history-substring-search-up
