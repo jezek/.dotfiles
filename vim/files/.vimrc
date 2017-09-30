@@ -84,8 +84,10 @@ endif
 
 " This enables us to undo files even if you exit Vim.
 if has('persistent_undo')
+	let undoDir=expand('~/.vim/undo/')
+	call system('mkdir -p ' . undoDir)
   set undofile
-  set undodir=~/.vim/tmp/undo//
+  set undodir=~/.vim/undo/
 endif
 
 " ------------------------------------------------------------------
