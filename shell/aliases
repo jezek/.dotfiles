@@ -8,14 +8,14 @@ isCmd(){
 uopen() {
 	if isCmd gnome-open; then
 		command gnome-open $* & 
-		exit
+		return
 	fi
 	if isCmd xdg-open; then
 		command xdg-open $* & 
-		exit
+		return
 	fi
 	echo "how???"
-	exit 1
+	return 1
 }
 alias o=uopen
 

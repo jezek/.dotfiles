@@ -1,5 +1,7 @@
 source ~/.zplug/init.zsh
 
+zplug 'zplug/zplug', hook-build:'zplug --self-manage'
+
 zplug "zsh-users/zsh-syntax-highlighting", defer:2
 zplug "zsh-users/zsh-history-substring-search", defer:2
 zplug "psprint/history-search-multi-word", defer:2
@@ -9,11 +11,8 @@ zplug "plugins/git",   from:oh-my-zsh
 zplug "themes/gnzh",   from:oh-my-zsh, as:theme
 #
 # Install plugins if there are plugins that have not been installed
-if ! zplug check --verbose; then
-    printf "Install? [y/N]: "
-    if read -q; then
-        echo; zplug install
-    fi
+if ! zplug check; then
+	zplug install
 fi
 
 # Then, source plugins and add commands to $PATH
@@ -24,6 +23,6 @@ if zplug check zsh-users/zsh-history-substring-search; then
   bindkey '^[[1;5B' history-substring-search-down
 fi
 
-if [ -f ~/.dotfiles/aliases/aliases ]; then
-    . ~/.dotfiles/aliases/aliases
+if [ -f ~/.zsh_aliases ]; then
+    . ~/.zsh_aliases
 fi
