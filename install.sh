@@ -148,9 +148,9 @@ fi
 	fi
 }
 
-essentials=(apt add-apt-repository git curl ssh sed)
-missing=()
-for cmd in "${essentials[@]}"; do
+.needCommand() {
+local missing=()
+for cmd in $*; do
 	if ! .isCmd $cmd; then
 		missing+=($cmd)
 	fi
@@ -160,7 +160,7 @@ if [ ! ${#missing[@]} = 0 ]; then
 	echo "we need theese essential programs for this script:"
 	echo -e $cCmd${missing[@]}$cNone
 	if .check_yes_no "install and continue?"; then
-		installed=()
+		local installed=()
 		for pkg in ${missing[@]}; do
 			.install $pkg
 			if ! .isCmd $pkg; then
@@ -174,13 +174,13 @@ if [ ! ${#missing[@]} = 0 ]; then
 			fi
 			installed+=($pkg)
 		done
-		unset installed
 	else #.check_yes_no "install and continue?"
 		exit 1
 	fi #.check_yes_no "install and continue?"
 fi
-unset missing
-unset essentials
+}
+
+.needCommand apt add-apt-repository git curl ssh sed
 
 dotfilesDir="$HOME/.dotfiles"
 github="https://github.com/"
@@ -290,6 +290,7 @@ plugins=(\
 	sticky-keys git \
 	shell/bash shell/zsh/zplug \
 	vim vim/plug \
+	golang \
 	mc audacious chromium \
 	fingerprint)
 

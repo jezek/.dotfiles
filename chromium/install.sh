@@ -18,7 +18,7 @@ fi
 if .isCmd firefox; then
 	echo "${cCmd}firefox${cNone} found"
 	if .check_yes_no "purge ${cPkg}firefox${cNone}?"; then
-		.run "$SUDO apt purge firefox"
+		.run $SUDO" apt purge firefox"
 	fi
 	if .isCmd firefox; then
 		echo "purge failed, uninstall manualy"

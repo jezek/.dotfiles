@@ -10,18 +10,29 @@
 
 # if running bash
 if [ -n "$BASH_VERSION" ]; then
-    # include .bashrc if it exists
-    if [ -f "$HOME/.bashrc" ]; then
-	. "$HOME/.bashrc"
-    fi
+  # include .bashrc if it exists
+	if [ -f "$HOME/.bashrc" ]; then
+		. "$HOME/.bashrc"
+	fi
 fi
 
 # set PATH so it includes user's private bin if it exists
 if [ -d "$HOME/bin" ] ; then
-    PATH="$HOME/bin:$PATH"
+	PATH="$HOME/bin:$PATH"
 fi
 
+DOTFILES="$HOME/.dotfiles"
 # set PATH so it includes user's dotfiles bin if it exists
-if [ -d "$HOME/.dotfiles/bin" ] ; then
-    PATH="$HOME/.dotfiles/bin:$PATH"
+if [ -d "$DOTFILES/bin" ] ; then
+	PATH="$DOTFILES/bin:$PATH"
+fi
+
+# run all profile in .dotfiles
+profileDir="$DOTFILES/shell/profile.d"
+if [ -d $profileDir ]; then
+	for i in $profileDir/*.sh; do
+		if [ -r $i ]; then
+			. $i
+		fi
+	done
 fi

@@ -38,7 +38,7 @@ fi
 if .isCmd rhythmbox; then
 	echo -e "${cCmd}rhythmbox${cNone} found"
 	if .check_yes_no "purge ${cPkg}rhythmbox${cNone}?"; then
-		.run "$SUDO apt purge rhythmbox"
+		.run $SUDO" apt purge rhythmbox"
 	fi
 	if .isCmd rhythmbox; then
 		echo "purge failed, uninstall manualy"

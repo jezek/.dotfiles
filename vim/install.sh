@@ -4,7 +4,7 @@ if [ -z ${dotfilesDir+x} ]; then
 fi
 
 if ! .isCmd vim; then
-	echo "${cCmd}vim${cNone} not installed"
+	echo -e "${cCmd}vim${cNone} not installed"
 	if .check_yes_no "install ${cPkg}vim?${cNone}"; then
 		.install "vim"
 		if ! .isCmd vim; then
