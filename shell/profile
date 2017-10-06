@@ -31,8 +31,12 @@ fi
 profileDir="$DOTFILES/shell/profile.d"
 if [ -d $profileDir ]; then
 	for i in $profileDir/*.sh; do
-		if [ -r $i ]; then
+		if [ -r $i ] && [ ! $(basename "$i") = "example.sh" ]; then
 			. $i
 		fi
 	done
 fi
+
+# don't use ctrl-s and ctrl-q ... less is more
+stty stop ''
+stty start ''

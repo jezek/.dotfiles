@@ -302,6 +302,7 @@ let g:airline_powerline_fonts = 1
 " ------------------------------------------------------------------
 nmap <C-F> :LeaderfSelf<cr>
 nmap <C-f> :LeaderfFile<cr>
+let g:Lf_DefaultMode = 'FullPath'
 
 
 " ------------------------------------------------------------------

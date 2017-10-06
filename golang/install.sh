@@ -3,8 +3,13 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/install.sh" essentials "$@"
 fi
 
-.needCommand select case while uname awk ls tar tee
+.needCommand select case while uname awk ls tar tee chown mkdir
 
+.toLines() {
+	printf '%s\n' "$@"
+}
+
+#TODO upgrade
 if ! .isCmd go; then
 	echo -e "${cCmd}go${cNone} not installed"
 	goInstallSources=("latest from golang.org" "apt install golang" "don't install")
@@ -107,10 +112,61 @@ fi
 echo "$goRoot parent owner:group = $og"
 .run "${goSudo} chown -R ${og} ${goRoot}"
 
-profileDir=""
-if [ "${goRoot}" = ${choices[0]} ]; then 
-	.run "echo \"PATH=${goRoot}/bin:\\\$PATH\" | ${goSudo} tee /etc/profile.d/golang.sh"
-	.run "export PATH=${goRoot}/bin:$PATH"
+# home directories
+if [ ! -d $HOME/.go/bin ]; then 
+	.run "mkdir -p ${HOME}/.go/bin"
 fi
-.run "echo \"PATH=${HOME}/.go/bin:\\\$PATH\" | tee ${dotfilesDir}/shell/profile.d/golang.sh"
-.run "export PATH=${HOME}/.go/bin:$PATH"
+if [ ! -d $HOME/.go/src ]; then 
+	.run "mkdir -p ${HOME}/.go/src"
+fi
+
+#TODO check if allready in path, upgrade if outdated
+# paths to profiles
+profileEtc=()
+profileHome=()
+if [ "${goRoot}" = ${choices[0]} ]; then 
+	profileEtc+=('PATH='$goRoot'/bin:$PATH')
+else
+	profileHome+=('GOROOT='$goRoot)
+fi
+profileHome=('PATH='$HOME'/.go/bin:$PATH')
+profileHome+=('export GOPATH='$HOME'/.go:'$HOME'/Programy/go')
+
+
+if [ ${#profileEtc[@]} -ne 0 ]; then
+	profileEtcFile="/etc/profile.d/golang.sh"
+	echo -e "writing to ${cFile}${profileEtcFile}${cNone}:"
+	echo -en "${cYellow}"
+	.toLines "${profileEtc[@]}"
+	echo -en "${cNone}"
+	.toLines "${profileEtc[@]}" | ${goSudo} tee ${profileEtcFile} >/dev/null
+	res=$?
+	if [ $res = 0 ]; then
+		echo -e $cGreen"ok"$cNone
+	else
+		echo -e $cErr"failed!"$cNone
+	fi
+	source <(.toLines "${profileEtc[@]}")
+	profileChanged=1
+fi
+if [ ${#profileHome[@]} -ne 0 ]; then
+	profileHomeFile="${dotfilesDir}/shell/profile.d/golang.sh"
+	echo -e "writing to ${cFile}${profileHomeFile}${cNone}:"
+	echo -en "${cYellow}"
+	.toLines "${profileHome[@]}"
+	echo -en "${cNone}"
+	.toLines "${profileHome[@]}" | tee ${profileHomeFile} >/dev/null
+	res=$?
+	if [ $res = 0 ]; then
+		echo -e $cGreen"ok"$cNone
+	else
+		echo -e $cErr"failed!"$cNone
+	fi
+	source <(.toLines "${profileHome[@]}")
+	profileChanged=1
+fi
+
+if [ "$profileChanged" = 1 ]; then
+	echo "logout/login needed for changes to be applied, or copy/paste yellow text to apply to this sesion"
+	read
+fi
