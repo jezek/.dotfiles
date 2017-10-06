@@ -37,6 +37,5 @@ if [ -d $profileDir ]; then
 	done
 fi
 
-# don't use ctrl-s and ctrl-q ... less is more
-stty stop ''
-stty start ''
+# so as not to be disturbed by Ctrl-S ctrl-Q in terminals:
+stty -ixon
