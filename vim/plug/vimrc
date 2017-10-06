@@ -90,6 +90,18 @@ if has('persistent_undo')
   set undodir=~/.vim/undo/
 endif
 
+" fix arrows on xterm
+"set term=linux
+"set t_ku=OA
+"set t_kd=OB
+"set t_kr=OC
+"set t_kl=OD
+"set notimeout		" don't timeout on mappings
+"set ttimeout		" do timeout on terminal key codes
+"set timeoutlen=100
+"set timeout ttimeoutlen=100 timeoutlen=5000
+
+
 " ------------------------------------------------------------------
 " Solarized Colorscheme Config
 " ------------------------------------------------------------------
