@@ -1,0 +1,5 @@
+- install go
+- ipfs-update install
+- config (~/.ipfs/config)
+- firewall
+- service (~/.config/systemd/user/ipfs.service)
