@@ -12,7 +12,7 @@ fi
 #TODO upgrade
 if ! .isCmd go; then
 	echo -e "${cCmd}go${cNone} not installed"
-	goInstallSources=("latest from golang.org" "apt install golang" "don't install")
+	goInstallSources=("latest from golang.org" "apt install golang gcc" "don't install")
 	select src in "${goInstallSources[@]}"; do
 		case $src in
 			"${goInstallSources[0]}") 
@@ -170,3 +170,5 @@ if [ "$profileChanged" = 1 ]; then
 	echo "logout/login needed for changes to be applied, or copy/paste yellow text to apply to this sesion"
 	read
 fi
+
+.run $SUDO" apt install gcc"
