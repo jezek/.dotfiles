@@ -1,0 +1,3 @@
+[submodule "git/git-summary"]
+	path = git/git-summary
+	url = git@github.com:lordadamson/git-summary.git
