@@ -100,7 +100,7 @@ fi
 }
 
 .install(){
-	.run $SUDO" apt install "$1
+	.run $SUDO" apt install $1"
 	return $?
 }
 
