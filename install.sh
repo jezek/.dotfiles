@@ -36,7 +36,9 @@ fi
 
 .dotfiles(){ return 1; }
 
-# Yes/no dialog. The first argument is the message that the user will see.
+# Yes/no dialog. Default answer (if pressing enter) is Yes (can be changed)
+# The first argument is the message that the user will see.
+# Second argumenti is optional, and if "n", then default will be No
 # If the user enters n/N, send exit 1.
 .check_yes_no(){
 	while true; do
@@ -48,10 +50,11 @@ fi
 			hint="[y/N]"
 		fi
 		echo -e -n "$1 $hint: "
-		read yn
+		read -n1 yn
 		if [ "$yn" = "" ]; then
 			yn="$default"
-
+		else
+			echo ""
 		fi
 		case "$yn" in
 			[Yy] )
