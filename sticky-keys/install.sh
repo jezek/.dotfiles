@@ -3,7 +3,7 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/install.sh" essentials "$@"
 fi
 
-if .check_yes_no "turn on sticky keys?" "n"; then
+if .check_yes_no "turn on sticky keys?"; then
 	xkbsetinstall=0
 	if ! .isCmd xkbset; then
 		echo "need ${cCmd}xkbset${cNone}, which is not installed"
