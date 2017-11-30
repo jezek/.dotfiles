@@ -3,6 +3,10 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/install.sh" essentials "$@"
 fi
 
+if .isCmd xkbset && .isCmd grep; then
+	xkbset q | grep -A2 Sticky-Keys
+fi
+
 if .check_yes_no "turn on sticky keys?"; then
 	xkbsetinstall=0
 	if ! .isCmd xkbset; then
