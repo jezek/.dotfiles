@@ -22,8 +22,10 @@ for arg in $@; do
 		debug ) debug=1;;
 		essentials ) onlyEssential=1;;
 		* )
-			echo -e $cErr"Unknown argument: $arg"$cNone
-			exit 1
+			if [ $onlyEssential -eq 0 ]; then
+				echo -e $cErr"Unknown argument: $arg"$cNone"\nAll arguments: $@"
+				exit 1
+			fi
 			;;
 	esac
 done
