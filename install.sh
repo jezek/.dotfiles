@@ -297,7 +297,8 @@ plugins=(\
 	vim vim/plug \
 	golang \
 	mc audacious chromium \
-	fingerprint)
+	fingerprint \
+	wmctrl)
 
 
 
