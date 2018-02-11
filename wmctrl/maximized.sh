@@ -1,6 +1,17 @@
 #! /bin/bash
+
+if [ $# = 0 ]; then
+	echo "no parameters passed"
+	exit 255
+fi
+
 if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/install.sh" essentials "$@"
+fi
+
+if ! .isCmd $1; then
+	echo "$1 is not valid command"
+	exit 254
 fi
 
 lscript="$dotfilesDir/wmctrl/sendPidToPipeAndExec.sh"
