@@ -28,7 +28,7 @@ fi
 
 for arg in $@; do
 	if [ -f "$arg" ]; then
-		.runRes argFullpath "realpath vim_undo_clean.sh | sed 's/\\//%/g'"
+		.runRes argFullpath "realpath ${arg} | sed 's/\\//%/g'"
 		undofile=$vimundoDir$argFullpath
 		if [ -f "$undofile" ]; then
 			.run "rm ${undofile}"
