@@ -31,7 +31,7 @@ fi
 profileDir="$DOTFILES/shell/profile.d"
 if [ -d $profileDir ]; then
 	for i in $profileDir/*.sh; do
-		if [ -r $i ] && [ ! $(basename "$i") = "example.sh" ]; then
+		if [ -r $i ]; then
 			. $i
 		fi
 	done
