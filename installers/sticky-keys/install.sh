@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if .isCmd xkbset && .isCmd grep; then
@@ -26,3 +26,5 @@ if .check_yes_no "turn on sticky keys?"; then
 		echo -e $cErr"xkbset install failed!"$cNone
 	fi
 fi
+
+#TODO create sticky keys script & link to bin

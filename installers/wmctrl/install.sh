@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd wmctrl; then
@@ -20,8 +20,9 @@ if ! .isCmd wmctrl; then
 	exit
 fi
 
+#TODO make as .linkToBin function to use it elsewhere
 dotfilesBinDir="$dotfilesDir/bin"
-maximizedScriptFile="$dotfilesDir/wmctrl/maximized.sh"
+maximizedScriptFile="$dotfilesDir/installers/wmctrl/maximized.sh"
 
 
 if [ ! -f $maximizedScriptFile ]; then

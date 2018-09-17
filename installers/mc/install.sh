@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd mc; then
@@ -20,7 +20,7 @@ if ! .isCmd mc; then
 	exit
 fi
 
-dotMcini="$dotfilesDir/mc/mc.ini"
+dotMcini="$dotfilesDir/installers/mc/mc.ini"
 mcini="$HOME/.config/mc/ini"
 
 if [ -f $dotMcini ]; then

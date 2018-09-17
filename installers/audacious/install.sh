@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd audacious; then
@@ -21,7 +21,7 @@ if ! .isCmd audacious; then
 fi
 
 audaConfig="$HOME/.config/audacious/config"
-dotAudaConfig="$dotfilesDir/audacious/config"
+dotAudaConfig="$dotfilesDir/installers/audacious/config"
 if [ -f $dotAudaConfig ]; then
 	if [ ! -f $audaConfig ]; then
 		installed=1

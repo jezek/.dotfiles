@@ -1,4 +1,5 @@
 #! /bin/bash
+#TODO make installer to be used in onliner with curl in any current directory
 
 # colors
 cNone='\e[0m'
@@ -283,6 +284,7 @@ fi
 
 
 if [ ! -d $dotfilesDir ]; then
+	#TODO test if allways clones to right directory (is running directory independent)
 	gitdotfiles=""
 	.run "git clone $github$githubName/.dotfiles.git"
 	if [ ! -d $dotfilesDir ]; then
@@ -303,10 +305,9 @@ plugins=(\
 
 
 for plugin in "${plugins[@]}"; do
-	pluginInstallFile="$dotfilesDir/$plugin/install.sh"
+	pluginInstallFile="$dotfilesDir/installers/$plugin/install.sh"
 	if [ -f $pluginInstallFile ]; then
 		source $pluginInstallFile plugin
 	fi
 done;
-
 

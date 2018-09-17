@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd vim; then
@@ -28,7 +28,7 @@ if [ ! -f $vimplug ]; then
 	exit
 fi
 
-.hardlink "$dotfilesDir/vim/plug/vimrc" "$HOME/.vimrc"
+.hardlink "$dotfilesDir/installers/vim/plug/vimrc" "$HOME/.vimrc"
 if [ "$installed" = "1" ]; then
 	.run "vim +PlugInstall +qall"
 fi

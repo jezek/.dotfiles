@@ -11,5 +11,7 @@ if ! .isCmd git; then
 	exit
 fi
 
-.hardlink "$dotfilesDir/git/gitconfig" "$HOME/.gitconfig"
+.hardlink "$dotfilesDir/installers/git/gitconfig" "$HOME/.gitconfig"
+
+#TODO install git-summary & link to bin
 

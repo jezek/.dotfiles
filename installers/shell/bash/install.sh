@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd bash; then
@@ -18,6 +18,6 @@ if ! .isCmd bash; then
 	exit
 fi
 
-.hardlink "$dotfilesDir/shell/profile" "$HOME/.profile"
-.hardlink "$dotfilesDir/shell/bash/bashrc" "$HOME/.bashrc"
-.hardlink "$dotfilesDir/shell/aliases" "$HOME/.bash_aliases"
+.hardlink "$dotfilesDir/installers/shell/profile" "$HOME/.profile"
+.hardlink "$dotfilesDir/installers/shell/bash/bashrc" "$HOME/.bashrc"
+.hardlink "$dotfilesDir/installers/shell/aliases" "$HOME/.bash_aliases"

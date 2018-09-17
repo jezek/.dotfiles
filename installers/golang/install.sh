@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 #TODO make it, so we can do it via one wget (goinup)
 
@@ -151,6 +151,7 @@ if [ ${#profileEtc[@]} -ne 0 ]; then
 	profileChanged=1
 fi
 if [ ${#profileHome[@]} -ne 0 ]; then
+	#TODO what if dir does not exist?
 	profileHomeFile="${dotfilesDir}/shell/profile.d/golang.sh"
 	echo -e "writing to ${cFile}${profileHomeFile}${cNone}:"
 	echo -en "${cYellow}"

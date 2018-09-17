@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd zsh; then
@@ -35,7 +35,7 @@ if [ ! -d $zplugDir ]; then
 	exit
 fi
 
-.hardlink "$dotfilesDir/shell/zsh/zprofile" "$HOME/.zprofile"
-.hardlink "$dotfilesDir/shell/profile" "$HOME/.profile"
-.hardlink "$dotfilesDir/shell/zsh/zplug/zshrc" "$HOME/.zshrc"
-.hardlink "$dotfilesDir/shell/aliases" "$HOME/.zsh_aliases"
+.hardlink "$dotfilesDir/installers/shell/zsh/zprofile" "$HOME/.zprofile"
+.hardlink "$dotfilesDir/installers/shell/profile" "$HOME/.profile"
+.hardlink "$dotfilesDir/installers/shell/zsh/zplug/zshrc" "$HOME/.zshrc"
+.hardlink "$dotfilesDir/installers/shell/aliases" "$HOME/.zsh_aliases"

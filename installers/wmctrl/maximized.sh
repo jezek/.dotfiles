@@ -6,7 +6,7 @@ if [ $# = 0 ]; then
 fi
 
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd $1; then
@@ -14,7 +14,7 @@ if ! .isCmd $1; then
 	exit 254
 fi
 
-lscript="$dotfilesDir/wmctrl/sendPidToPipeAndExec.sh"
+lscript="$dotfilesDir/installers/wmctrl/sendPidToPipeAndExec.sh"
 if [ ! -f $lscript ]; then
 	echo "script not found: $lscript"
 	exit 1

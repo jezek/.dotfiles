@@ -1,6 +1,6 @@
 #! /bin/bash
 if [ -z ${dotfilesDir+x} ]; then
-	source "$HOME/.dotfiles/install.sh" essentials "$@"
+	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
 if ! .isCmd vim; then
@@ -20,6 +20,8 @@ if ! .isCmd vim; then
 	exit
 fi
 
+#TODO link installers/vim/.vim_undo_clean.sh to bin
+
 if ! .isCmd gvim; then
 	echo "${cCmd}gvim${cNone} not installed"
 	if .check_yes_no "install ${cPkg}vim-gtk3${cNone}?"; then
@@ -31,3 +33,4 @@ if ! .isCmd gvim; then
 		fi
 	fi
 fi
+
