@@ -1,3 +1,1 @@
-shell/profile.d/*.sh
-!shell/profile.d/example.sh
-bin/.maximized
+bin/*
