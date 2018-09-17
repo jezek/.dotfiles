@@ -2,6 +2,7 @@
 if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/install.sh" essentials "$@"
 fi
+#TODO make it, so we can do it via one wget (goinup)
 
 .needCommand select case while uname awk ls tar tee chown mkdir
 
@@ -9,7 +10,7 @@ fi
 	printf '%s\n' "$@"
 }
 
-#TODO upgrade
+#TODO upgrade golang version (inpiration: https://github.com/udhos/update-golang
 if ! .isCmd go; then
 	echo -e "${cCmd}go${cNone} not installed"
 	goInstallSources=("latest from golang.org" "apt install golang gcc" "don't install")
