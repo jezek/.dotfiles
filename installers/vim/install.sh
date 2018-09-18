@@ -21,9 +21,18 @@ if ! .isCmd vim; then
 fi
 
 #TODO link installers/vim/.vim_undo_clean.sh to bin
+linkFile=$dotfilesDir"/bin/.vimUndoClean"
+vimUndoCleanFile=$dotfilesDir"/installers/vim/vim_undo_clean.sh"
+if [ ! $vimUndoCleanFile -ef $linkFile ]; then
+	if ! .hardlink $vimUndoCleanFile $linkFile; then
+		echo -e $cErr"Linking "$cFile"${vimUndoCleanFile}"$cErr" to "$cFile"${linkFile}"$cErr" failed."$cNone
+	else
+		echo -e "Executable "$cCmd"$(basename ${linkFile})"$cNone" created."
+	fi
+fi
 
 if ! .isCmd gvim; then
-	echo "${cCmd}gvim${cNone} not installed"
+	echo -e "${cCmd}gvim${cNone} not installed"
 	if .check_yes_no "install ${cPkg}vim-gtk3${cNone}?"; then
 		.install "vim-gtk3"
 		if ! .isCmd gvim; then

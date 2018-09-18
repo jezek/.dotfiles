@@ -122,16 +122,17 @@ fi
 .backup() {
 	local i
 	for i in $*; do 
-		echo $i 
+		echo -e "Backing up "$cFile"${i}"$cNone 
 		if [ -e $i ]; then 
-			echo -e "${cFile}$i${cNone} exists"
-			if .check_yes_no "backup ${cFile}$i${cNone}?"; then
-				local backup="$i~"
-				echo -e "backing up to ${cFile}$backup${cNone}"
-				.run "mv -ib $i $backup"
-			else
-				.run "rm $i"
+			local backup="$i~"
+			if [ -e $backup ]; then
+				(>&2 echo -e $cErr"Can not backup, file "$cFile"${i}"$cErr" allready has a backup"$cNone)
+				return 1 # can not backup, other backup file exists
 			fi
+			.run "mv $i $backup"
+		else
+			(>&2 echo -e $cErr"Can not backup, file "$cFile"${i}"$cErr" does not exist"$cNone)
+			return 255 # backup file not found
 		fi
 	done
 }
@@ -145,12 +146,27 @@ fi
 	local target=$2
 
 	if [ -f "$source" ]; then
-		if [ ! $target -ef $source ]; then
-			if .check_yes_no "use ${cFile}$source${cNone} as ${cFile}$target${cNone}?"; then
-				.backup $target
-				.run "cp -vibl $source $target"
+		# source exists
+		if [ $target -ef $source ]; then
+			# source and target are equal files
+			return
+		fi
+		if [ -f "$target" ]; then
+			# target exists
+			if .check_yes_no "${cFile}$target${cNone} allready exists. Create backup and use ${cFile}$source${cNone}? "; then
+				if ! .backup "$target"; then
+					if ! .check_yes_no "Backup failed. Link files anyway?"; then
+						return 1 # user decided not to
+					fi
+				fi
+			else
+				return 1 # user decided not to
 			fi
 		fi
+		.run "cp -vl $source $target"
+	else
+		(>&2 echo -e $cErr".hardlink: no source file "$cFile"${source}"$cErr" found"$cNone)
+		return 254 # no source file
 	fi
 }
 
