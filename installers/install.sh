@@ -16,7 +16,7 @@ cCmd=$cGreen
 cPkg=$cBlue
 cFile=$cMagenta
 
-debug=0
+# debug=0
 onlyEssential=0
 for arg in $@; do
 	case "$arg" in
@@ -100,18 +100,32 @@ fi
 	local r=$?
 	eval $resVar="'$resVal'"
 	if [ "$debug" = 1 ]; then
-		(>&2 echo -e Result Value: $cYellow$resVal$cNone)
+		(>&2 echo -e ".runRes: result: "$cYellow${resVal}$cNone)
 	fi
 	return $r
 }
 
+# install all packages for commands
+# if command name is not the same as package name, the package name is specified as "cmd/pkg"
 .install(){
-	.run $SUDO" apt install $1"
+#TODO check all occurences, if we did not broke something
+	local packages=()
+	
+	local cmdPkg
+	for cmdPkg in $*; do
+		local pkg=${cmdPkg#*"/"} # everything after "/"
+		packages+=("${pkg}")
+	done
+	if [ "$debug" = 1 ]; then
+		(>&2 echo -e ".install: installing packages: "$cYellow${packages[*]}$cNone)
+	fi
+
+	.run $SUDO" apt install ${packages[*]}"
 	return $?
 }
 
 .isCmd(){
-	type $1 >/dev/null 2>&1
+	type ${1%%"/"*} >/dev/null 2>&1 # command is everything until "/"
 	return $?
 }
 
@@ -119,19 +133,32 @@ fi
  .run "find /etc/apt/ -name '*.list' -print0 | xargs -0 grep -ho '^deb http://ppa.launchpad.net/[a-z0-9\\-]\\+/[a-z0-9\\-]\\+'"
 }
 
+.timestamp() {
+	$(date +"%F %T.%N")
+}
+
 .backup() {
-	local i
-	for i in $*; do 
-		echo -e "Backing up "$cFile"${i}"$cNone 
-		if [ -e $i ]; then 
-			local backup="$i~"
+	local filename
+	for fileName in $*; do 
+		if [ -e "${fileName}" ]; then # file exists
+			local backup="${fileName}.$(.timestamp).bak"
+
 			if [ -e $backup ]; then
-				(>&2 echo -e $cErr"Can not backup, file "$cFile"${i}"$cErr" allready has a backup"$cNone)
+				(>&2 echo -e $cErr"Backup error: file "$cFile"${fileName}"$cErr" allready has a backup "$cFile${backup}$cNone)
 				return 1 # can not backup, other backup file exists
 			fi
-			.run "mv $i $backup"
+
+			.run "mv $fileName $backup"
+			local res=$?
+			if ! $res; then
+				(>&2 echo -e $cErr"Backup error: move error: "$cNone${res})
+				return 254 # move error
+			else
+				echo -e "File "$cFile"${fileName}"$cNone" backed up to "$cFile${backup}$cNone
+				return
+			fi
 		else
-			(>&2 echo -e $cErr"Can not backup, file "$cFile"${i}"$cErr" does not exist"$cNone)
+			(>&2 echo -e $cErr"Backup error: file "$cFile${fileName}$cErr" does not exist"$cNone)
 			return 255 # backup file not found
 		fi
 	done
@@ -139,72 +166,120 @@ fi
 
 .hardlink() {
 	if [ ! $# = 2 ]; then
-		(>&2 echo -e $cErr".hardlink: need 2 argument, got $#: "$cNone$@)
+		(>&2 echo -e $cErr"Hardlinking error: .hardlink function need 2 argument, got $#: "$cNone$@)
 		return 255
 	fi
 	local source=$1
 	local target=$2
 
-	if [ -f "$source" ]; then
-		# source exists
-		if [ $target -ef $source ]; then
-			# source and target are equal files
-			return
+	if [ -f "$source" ]; then # source exists
+
+		if [ $target -ef $source ]; then # source and target are equal files
+			(>&2 echo -e "Hardlinking not needed, file "$cFile"${source}"$cNone" and "$cFile"${target}"$cNone" are the same (allready hardlinked).")
+			return 2 # allready linked
 		fi
-		if [ -f "$target" ]; then
-			# target exists
-			if .check_yes_no "${cFile}$target${cNone} allready exists. Create backup and use ${cFile}$source${cNone}? "; then
+
+		if [ -f "$target" ]; then # target exists
+
+			if .check_yes_no "File "$cFile${target}$cNone" allready exists. Create backup and use "$cFile${source}$cNone"?"; then
 				if ! .backup "$target"; then
 					if ! .check_yes_no "Backup failed. Link files anyway?"; then
-						return 1 # user decided not to
+						(>&2 echo -e $cErr"Hardlinking error: user decided not to link file "$cFile"${source}"$cErr" to "$cFile"${target}"$cErr"."$cNone)
+						return 1 # user decided not to link
 					fi
 				fi
 			else
-				return 1 # user decided not to
+				(>&2 echo -e $cErr"Hardlinking error: user decided not to link file "$cFile"${source}"$cErr" to "$cFile"${target}"$cErr"."$cNone)
+				return 1 # user decided not to link
 			fi
 		fi
 		.run "cp -vl $source $target"
+		local res=$?
+		if ! $res; then
+			(>&2 echo -e $cErr"Hardlinking error: copy error: "$cNone${res})
+			return 253 # copy error
+		fi
 	else
-		(>&2 echo -e $cErr".hardlink: no source file "$cFile"${source}"$cErr" found"$cNone)
+		(>&2 echo -e $cErr"Hardlinking error: no source file "$cFile"${source}"$cErr" found."$cNone)
 		return 254 # no source file
 	fi
 }
 
-.needCommand() {
-local missing=()
-for cmd in $*; do
-	if ! .isCmd $cmd; then
-		missing+=($cmd)
+# to global variable missing it assigns an array of missing commands passed as other arguments 
+# returns 1 if some command is missing
+.missing() {
+	if [ "$debug" = 1 ]; then
+		(>&2 echo -e ".missing: check "$cYellow${*}$cNone)
 	fi
-done
 
-if [ ! ${#missing[@]} = 0 ]; then
-	echo "we need theese essential programs for this script:"
-	echo -e $cCmd${missing[@]}$cNone
-	if .check_yes_no "install and continue?"; then
-		local installed=()
-		for pkg in ${missing[@]}; do
-			.install $pkg
-			if ! .isCmd $pkg; then
-				echo -e $cErr"$pkg install failed!"$cNone
-				#revert installed missing?
-				if [ ! ${#installed[@]} = 0 ]; then
-					echo "reverting installed missing: ${installed[@]}"
-					.run $SUDO" apt remove ${installed[@]}"
-				fi
-				exit 255
-			fi
-			installed+=($pkg)
-		done
-	else #.check_yes_no "install and continue?"
-		exit 1
-	fi #.check_yes_no "install and continue?"
-fi
+	missing=()
+	local cmd
+	for cmd in $*; do
+		if ! .isCmd "${cmd}"; then
+			missing+=("${cmd}")
+		fi
+	done
+
+	if [ "$debug" = 1 ]; then
+		(>&2 echo -e ".missing: results "$cYellow${missing[*]}$cNone)
+	fi
+	if [ ! ${#missing[*]} = 0 ]; then
+		#TODO error message
+		return 1 # something is missing
+	fi
+	return
 }
 
-.needCommand apt add-apt-repository git curl ssh sed
+.needCommand() {
+	if ! .missing $*; then
+		echo "we need theese essential programs for this script:"
+		echo -e $cCmd${missing[*]}$cNone
+		if .check_yes_no "install and continue?"; then
+			if ! .install ${missing[*]}; then
+				#TODO error message
+				return 255 # install failed for some reason
+			else
+				.missing $*
+				return $?
+			fi
+		else
+			#TODO error message
+			return 1 # user dont want to install needed packages
+		fi
+	fi
+	return
+}
+
+.installCommand() {
+	if ! .missing $*; then
+		echo "installing programs:"
+		echo -e $cCmd${missing[*]}$cNone
+		if .check_yes_no "install?"; then
+			if ! .install ${missing[*]}; then
+				#TODO error message
+				return 255 # install failed for some reason
+			else
+				.missing $*
+				return $?
+			fi
+		else
+			#TODO error message
+			return 1 # user dont want to install needed packages
+		fi
+	fi
+	return
+}
+
+if ! .needCommand apt add-apt-repository git curl ssh sed date cp mv; then
+	echo "Essential program are not available: "$missing
+	if [ $onlyEssential = 1 ]; then
+		return 1
+	fi
+	exit 1
+fi
 
 dotfilesDir="$HOME/.dotfiles"
+dotfilesBin="${dotfilesDir}/bin"
 github="https://github.com/"
 githubName="jezek"
 
@@ -265,7 +340,13 @@ if [ ! "$res" = 1 ]; then
 			if [ ! -z $comment ]; then
 				githubKeyTitle=$comment
 			fi
-			.runRes pubKey "cat $pubKeyFile"
+			.runRes 
+		
+			
+	
+		
+				local packages=()
+				pubKey "cat $pubKeyFile"
 			res=$?
 			if [ $res = 0 ]; then
 				.run "curl -u \"$githubName\" -X POST -H \"Content-type: application/json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys\""
