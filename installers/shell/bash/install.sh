@@ -3,19 +3,11 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
-if ! .isCmd bash; then
-	if .check_yes_no "install ${cPkg}bash${cNone}?"; then
-		.install bash
-		if ! .isCmd bash; then
-			echo -e $cErr"failed"$cNone
-			[ "$1" = plugin ] && return 1
-			exit 1
-		fi
-	fi
-fi
-if ! .isCmd bash; then
-	[ "$1" = plugin ] && return
-	exit
+if .installCommand bash; then
+	echo -e "Shell ${cCmd}bash${cNone} installed"
+else
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
 .hardlink "$dotfilesDir/installers/shell/profile" "$HOME/.profile"

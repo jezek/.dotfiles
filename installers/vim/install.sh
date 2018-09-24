@@ -8,8 +8,8 @@ echo -e "Installing vim components"
 if .installCommand vim; then
 	echo -e "Command ${cCmd}vim${cNone} installed"
 else
-	[ "$1" = plugin ] && return
-	exit
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
 linkFile="${dotfilesBin}/.vimUndoClean"

@@ -3,19 +3,12 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
-if ! .isCmd zsh; then
-	if .check_yes_no "install ${cPkg}zsh${cNone}?"; then
-		.install zsh
-		if ! .isCmd zsh; then
-			echo -e $cErr"failed"$cNone
-			[ "$1" = plugin ] && return 255
-			exit 255
-		fi
-	fi
-fi
-if ! .isCmd zsh; then
-	[ "$1" = plugin ] && return
-	exit
+
+if .installCommand zsh; then
+	echo -e "Shell ${cCmd}zsh${cNone} installed"
+else
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
 zplugDir="$HOME/.zplug"

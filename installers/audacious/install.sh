@@ -3,21 +3,13 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
-if ! .isCmd audacious; then
-	echo "${cCmd}audacious${cNone} not installed"
-	if .check_yes_no "install ${cPkg}audacious audacious-plugins${cNone}?"; then
-		.install "audacious audacious-plugins"
-		if ! .isCmd audacious; then
-			echo -e $cErr"failed"$cNone
-			[ "$1" = plugin ] && return 1
-			exit 1
-		fi
-	fi
-fi
+echo -e "Installing audacious music player with plugins"
 
-if ! .isCmd audacious; then
-	[ "$1" = plugin ] && return
-	exit
+if .installCommand audacious 'audacious/audacious-plugins'; then
+	echo -e "${cCmd}audacious${cNone} with plugins installed"
+else
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
 audaConfig="$HOME/.config/audacious/config"
@@ -33,6 +25,7 @@ if [ -f $dotAudaConfig ]; then
 		echo "associate audacious with audio files (from ${cFile}$dotfilesDir/audacious/mimeapps.list${cNone} to ${cFile}$HOME/.config/mimeapps.list${cNone}"
 		read
 	fi
+	unset installed
 fi
 
 if .isCmd rhythmbox; then

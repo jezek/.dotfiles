@@ -3,28 +3,27 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
-if .isCmd xkbset && .isCmd grep; then
-	xkbset q | grep -A2 Sticky-Keys
+if ! .check_yes_no "Install sticky key support?"; then
+	[ "$1" = plugin ] && return
+	exit
 fi
 
-if .check_yes_no "turn on sticky keys?"; then
-	xkbsetinstall=0
-	if ! .isCmd xkbset; then
-		echo "need ${cCmd}xkbset${cNone}, which is not installed"
-		if .check_yes_no "install ${cPkg}xkbset${cNone}?"; then
-			xkbsetinstall=1
-			.install "xkbset"
-		fi
-	fi
-	if .isCmd xkbset; then
-		echo ""
-		.run "xkbset a sticky -twokey -latchlock"
-		.run "xkbset exp =sticky"
-		echo "you should add theese somewhere to startup, or turn on in settings..."
-		read
-	elif [ "$xkbsetinstall" = 1 ]; then
-		echo -e $cErr"xkbset install failed!"$cNone
-	fi
+if .installCommand xkbset; then
+	echo -e "Command ${cCmd}xkbset${cNone} for keyboard configuration under X installed"
+else
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
-#TODO create sticky keys script & link to bin
+linkFile="${dotfilesBin}/.stickeys"
+if .hardlink "${dotfilesDir}/installers/sticky-keys/sticky-keys.sh" $linkFile; then
+	echo -e "Executable "$cCmd"$(basename ${linkFile})"$cNone" created."
+fi
+
+echo ""
+.run "xkbset a sticky -twokey -latchlock"
+.run "xkbset exp =sticky"
+echo ""
+echo "You should add theese somewhere to startup, or turn on in settings."
+echo -e "Or use "$cCmd".stickeys"$cNone
+read

@@ -108,7 +108,6 @@ fi
 # install all packages for commands
 # if command name is not the same as package name, the package name is specified as "cmd/pkg"
 .install(){
-#TODO check all occurences, if we did not broke something
 	local packages=()
 	
 	local cmdPkg
@@ -134,7 +133,7 @@ fi
 }
 
 .timestamp() {
-	$(date +"%F %T.%N")
+	date +"%F %T.%N"
 }
 
 .backup() {
@@ -143,14 +142,14 @@ fi
 		if [ -e "${fileName}" ]; then # file exists
 			local backup="${fileName}.$(.timestamp).bak"
 
-			if [ -e $backup ]; then
+			if [ -e "${backup}" ]; then
 				(>&2 echo -e $cErr"Backup error: file "$cFile"${fileName}"$cErr" allready has a backup "$cFile${backup}$cNone)
 				return 1 # can not backup, other backup file exists
 			fi
 
-			.run "mv $fileName $backup"
+			.run "mv '$fileName' '$backup'"
 			local res=$?
-			if ! $res; then
+			if [ ! "${res}" = 0 ]; then
 				(>&2 echo -e $cErr"Backup error: move error: "$cNone${res})
 				return 254 # move error
 			else
@@ -180,22 +179,26 @@ fi
 		fi
 
 		if [ -f "$target" ]; then # target exists
-
-			if .check_yes_no "File "$cFile${target}$cNone" allready exists. Create backup and use "$cFile${source}$cNone"?"; then
-				if ! .backup "$target"; then
-					if ! .check_yes_no "Backup failed. Link files anyway?"; then
-						(>&2 echo -e $cErr"Hardlinking error: user decided not to link file "$cFile"${source}"$cErr" to "$cFile"${target}"$cErr"."$cNone)
-						return 1 # user decided not to link
+			if .check_yes_no "File "$cFile${target}$cNone" allready exists. Overwrite with "$cFile${source}$cNone"?"; then
+				if .check_yes_no "Backup "$cFile${target}$cNone"?"; then
+					if ! .backup "$target"; then
+						if ! .check_yes_no "Backup failed. Link files anyway?"; then
+							(>&2 echo -e $cErr"Hardlinking error: user decided not to link file "$cFile"${source}"$cErr" to "$cFile"${target}"$cErr"."$cNone)
+							return 1 # user decided not to link
+						fi
 					fi
+				else
+					.run "rm '$target'"
 				fi
 			else
 				(>&2 echo -e $cErr"Hardlinking error: user decided not to link file "$cFile"${source}"$cErr" to "$cFile"${target}"$cErr"."$cNone)
 				return 1 # user decided not to link
 			fi
 		fi
-		.run "cp -vl $source $target"
+
+		.run "cp -vfl '$source' '$target'"
 		local res=$?
-		if ! $res; then
+		if [ ! "${res}" = 0 ]; then
 			(>&2 echo -e $cErr"Hardlinking error: copy error: "$cNone${res})
 			return 253 # copy error
 		fi
@@ -250,6 +253,9 @@ fi
 	return
 }
 
+# installs command if missing.
+# if command is in package wthh different name, use "cmd/pkg" format.
+#TODO provide a way to install additional packages for the command. (audacious+plugins, tlp+tlp-rdw, ...)
 .installCommand() {
 	if ! .missing $*; then
 		echo "installing programs:"
@@ -313,12 +319,7 @@ if [ ! "$res" = 1 ]; then
 		fi
 		if [ -z $pubKeyFile ]; then
 			if .check_yes_no "no public key ($sshPubKeyFile) found. create new?"; then
-				if ! .isCmd "ssh-keygen"; then
-					if .check_yes_no "this operation needs ${cPkg}ssh-keygen${cNone}. install?"; then
-						.install "ssh-keygen"
-					fi
-				fi
-				if .isCmd "ssh-keygen"; then
+				if .needCommand "ssh-keygen"; then
 					comment=$HOSTNAME
 					if .check_yes_no "ssh key will be generated with comment \"$comment\". change it?" "n"; then
 						read -p "ssh key comment: " comment
@@ -328,7 +329,7 @@ if [ ! "$res" = 1 ]; then
 					fi
 					.run "ssh-keygen -t rsa -b 4096 $commentAttr"
 				else
-					echo -e $cErr"generating ssh key failed"$cNone
+					echo -e $cErr"generating ssh key failed, no "$cCmd"ssh-keygen"$cErr" installed"$cNone
 				fi
 				if [ -e $sshPubKeyFile ]; then
 					pubKeyFile=$sshPubKeyFile
