@@ -1,0 +1,6 @@
+#!/bin/bash
+if [ -f test ]; then
+	mv test test.sh
+elif [ -f test.sh ]; then
+	mv test.sh test
+fi
