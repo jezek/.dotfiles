@@ -1,2 +1,2 @@
-shell/profile.d/*.sh
-!shell/profile.d/example.sh
+*/*
+!installers/*
