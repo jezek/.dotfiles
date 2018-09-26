@@ -1,3 +1,6 @@
 [submodule "git/git-summary"]
 	path = installers/git/git-summary
 	url = git@github.com:lordadamson/git-summary.git
+[submodule "installers/backup/rsync-incremental-backup"]
+	path = installers/backup/rsync-incremental-backup
+	url = git@github.com:pedroetb/rsync-incremental-backup.git
