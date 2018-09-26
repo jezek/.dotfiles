@@ -7,12 +7,12 @@ fi
 if .isCmd tlp; then
 	echo -e "Power saving manager - tlp, allready installed."
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 if ! .check_yes_no "Install and run power saving manager - tlp?"; then
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 

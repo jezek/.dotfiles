@@ -28,7 +28,7 @@ if ! .isCmd go; then
 					exit 1
 				fi
 				[ "$1" = plugin ] && return
-				exit
+				exit 0
 				;;
 			"${goInstallSources[2]}")
 				[ "$1" = plugin ] && return
