@@ -18,10 +18,12 @@ else
 	exit 0
 fi
 
-if ! .needCommand rsync; then
+if ! .needCommand rsync ssh ssh-copy-id; then
 	[ "$1" = plugin ] && return 1
 	exit 1
 fi
+
+echo
 
 .backup_checkDest() {
 	if [ ! $# = 2 ]; then
@@ -48,14 +50,22 @@ fi
 backupDestDirectory=""
 backupDestRemote=""
 while true; do # ask for backup destination [[user@]hostname:]path/to/backup/directory
-	echo -e "Backup destination in format: [[user@]hostname:]path/to/backup/directory"
+	echo -e $cInput"1"$cNone" - \"192.168.88.132:/home/jezek\""
+	echo -e $cInput"<enter>"$cNone" - type nothing for exit"
+	echo -e $cInput"[[user@]hostname:]path/to/backup/directory"$cNone" - backup destination. If path is local, will be converted to absolute path."
+	echo -n "Backup destination: "
 	dest=""
 	read dest
-	if [ "${dest}" = "" ]; then
-		echo -e $cErr"User exited"$cNone
-		[ "$1" = plugin ] && return 1
-		exit 1
-	fi
+	case "$dest" in
+		1 ) 
+			dest="192.168.88.132:/home/jezek"
+			;; 
+		"" ) 
+			echo -e $cErr"User exited"$cNone
+			[ "$1" = plugin ] && return 1
+			exit 1
+			;;
+	esac
 
 	prefix=${dest%%":"*} # everything before ":"
 	suffix=${dest#*":"} # everything after ":"
@@ -72,20 +82,78 @@ while true; do # ask for backup destination [[user@]hostname:]path/to/backup/dir
 	fi
 
 	echo -e "Checking if destination input is valid: remote=$backupDestRemote,dir=$backupDestDirectory"
-	if .backup_checkDest "$backupDestRemote" "$backupDestDirectory"; then
-		if [ "$backupDestRemote" = "" ]; then
-			# set destinat directory to absolute path
-			backupDestDirectory="$( cd "${backupDestDirectory}" ; pwd -P )"
-		fi
-		echo -e "Destination is valid: $backupDestRemote:"$cFile${backupDestDirectory}$cNone
-		break
+	if ! .backup_checkDest "$backupDestRemote" "$backupDestDirectory"; then
+		echo -e "Try again"
+		echo
+		continue
 	fi
-done
 
-#TODO ask for backup source
+	if [ "$backupDestRemote" = "" ]; then
+		# set destinat directory to absolute path
+		backupDestDirectory="$( cd "${backupDestDirectory}" ; pwd -P )"
+	fi
+
+	# all is valid, break from loop
+	break
+done
+unset dest prefix suffix
+
+echo
+echo -n "Backup destination entered: "
+if [ ! "$backupDestRemote" = "" ]; then 
+	echo -n $backupDestRemote":"
+fi
+echo -e $cFile${backupDestDirectory}$cNone
+echo
+
+backupSourceDirectory=""
+while true; do # ask for backup source & check
+	echo -e $cInput"1"$cNone" - \"$HOME\""
+	echo -e $cInput"<enter>"$cNone" - type nothing for exit"
+	echo -e $cInput"path/to/directory/to/backup"$cNone" - source directory to backup from. Will be cnverted to absolute path"
+	echo -n "Backup source: "
+	src=""
+	read src
+	case "$src" in
+		1 ) 
+			src="$HOME"
+			;; 
+		"" ) 
+			echo -e $cErr"User exited"$cNone
+			[ "$1" = plugin ] && return 1
+			exit 1
+			;;
+	esac
+
+
+	if [ ! -d "$src" ]; then
+		echo -e $cErr"Source directory does not exist: "$cFile${src}$cNone
+		echo -e "Try again"
+		echo
+		continue
+	fi
+
+	# set destinat directory to absolute path
+	backupSourceDirectory="$( cd "${src}" ; pwd -P )"
+
+	# all is valid, break from loop
+	break
+done
+unset src
+
+echo
+echo -e "Backup source entered: "$cFile${backupSourceDirectory}$cNone
+echo
+
 #TODO create & deploy exclude file
-#TODO create & deploy backup config
 .run "mkdir -p '${dotBackupDir}'"
+
+# create & deploy backup config
+configFile="${dotBackupDir}/config"
+.run "touch '$configFile'"
+.run "echo 'backupSourceDirectory=\"$backupSourceDirectory\"' >> '$configFile'"
+.run "echo 'backupDestRemote=\"$backupDestRemote\"' >> '$configFile'"
+.run "echo 'backupDestDirectory=\"$backupDestDirectory\"' >> '$configFile'"
 
 linkFile="${dotfilesBin}/.backup"
 if .hardlink "${dotfilesDir}/installers/backup/backup.sh" $linkFile; then
