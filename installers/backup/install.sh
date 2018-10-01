@@ -140,20 +140,68 @@ while true; do # ask for backup source & check
 	break
 done
 unset src
-
+ 
+backupSourceDirectory=$HOME
 echo
 echo -e "Backup source entered: "$cFile${backupSourceDirectory}$cNone
 echo
 
-#TODO create & deploy exclude file
+
+# create exclude directories array
+backupExcludes=()
+
+echo -e "Mounted points in backup source directory:"
+while read -r i; do # loop though all mountpoints
+	fields=($i)
+	src=${fields[0]}
+	dst=${fields[1]}
+
+	case "$dst" in ${backupSourceDirectory}*) # if mount destination is inside our source directory
+		# add to excludes array
+		echo -e $cFile${dst}$cNone" -> "$src
+		backupExcludes+=("$dst")
+	esac
+done < /proc/mounts
+unset fields src dst
+echo
+
+
+echo -e "Searching for \".cache\" directories in backup source directory:"
+
+# search for ".cache" in source excluding mounted points in excludes
+if ! .runRes caches "find '${backupSourceDirectory}' -mount -type d \( -not -perm -g+r,u+r,o+r -prune -or -name '*.cache*' -prune -print \)"; then # do not descend to other filesystems, do not descen do dirs, you have not permissions for, print ".cache" dirs and do not descend
+	printf $cErr"Some errors occured in search"$cNone"\n"
+fi
+if [ "$caches" = "" ]; then 
+	printf "No \".cache\" directories\n"
+else
+	printf "Found \".cache\" directories:\n"
+	while read -r line; do # loop though all findings
+		# add to excludes array
+		printf "$cFile${line}$cNone\n"
+		backupExcludes+=("$line")
+	done <<< $caches
+fi
+unset caches line
+echo
+
+echo -e "Deploying backup configuration:"
+
 .run "mkdir -p '${dotBackupDir}'"
+
+# deploy exclude file
+excludeFile="${dotBackupDir}/excludes"
+.run "touch '$excludeFile'"
+printf "%s\n" "${backupExcludes[@]}" | tee "$excludeFile"
+echo
 
 # create & deploy backup config
 configFile="${dotBackupDir}/config"
 .run "touch '$configFile'"
-.run "echo 'backupSourceDirectory=\"$backupSourceDirectory\"' >> '$configFile'"
-.run "echo 'backupDestRemote=\"$backupDestRemote\"' >> '$configFile'"
-.run "echo 'backupDestDirectory=\"$backupDestDirectory\"' >> '$configFile'"
+printf "backupSourceDirectory=\"%s\"\n\
+backupDestRemote=\"%s\"\n\
+backupDestDirectory=\"%s\"\n" "$backupSourceDirectory" "$backupDestRemote" "$backupDestDirectory" | tee "$configFile"
+echo
 
 linkFile="${dotfilesBin}/.backup"
 if .hardlink "${dotfilesDir}/installers/backup/backup.sh" $linkFile; then
