@@ -1,16 +1,16 @@
 alias ll='ls -lF --group-directories-first'
 alias lla='ls -lFA --group-directories-first'
 
-isCmd(){
+is(){
 	type $1 >/dev/null 2>&1
 }
 
 uopen() {
-	if isCmd gnome-open; then
+	if is gnome-open; then
 		command gnome-open $* & 
 		return
 	fi
-	if isCmd xdg-open; then
+	if is xdg-open; then
 		command xdg-open $* & 
 		return
 	fi
@@ -27,5 +27,5 @@ alias cl=cdls
 mkdircd () { mkdir -p "$@" && eval cd "\"\$$#\""; }
 alias md=mkdircd
 
-//TODO find this alias a propper place, or check for git command
+#TODO find this alias a propper place, or check for git command
 alias gsba='git show-branch -a'

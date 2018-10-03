@@ -31,4 +31,4 @@ fi
 .hardlink "$dotfilesDir/installers/shell/zsh/zprofile" "$HOME/.zprofile"
 .hardlink "$dotfilesDir/installers/shell/profile" "$HOME/.profile"
 .hardlink "$dotfilesDir/installers/shell/zsh/zplug/zshrc" "$HOME/.zshrc"
-.hardlink "$dotfilesDir/installers/shell/aliases" "$HOME/.zsh_aliases"
+.hardlink "$dotfilesDir/installers/shell/aliases.sh" "$HOME/.zsh_aliases"

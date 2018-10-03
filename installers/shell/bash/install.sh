@@ -12,4 +12,4 @@ fi
 
 .hardlink "$dotfilesDir/installers/shell/profile" "$HOME/.profile"
 .hardlink "$dotfilesDir/installers/shell/bash/bashrc" "$HOME/.bashrc"
-.hardlink "$dotfilesDir/installers/shell/aliases" "$HOME/.bash_aliases"
+.hardlink "$dotfilesDir/installers/shell/aliases.sh" "$HOME/.bash_aliases"
