@@ -151,13 +151,13 @@ if [ ${#profileEtc[@]} -ne 0 ]; then
 	profileChanged=1
 fi
 if [ ${#profileHome[@]} -ne 0 ]; then
-	#TODO what if dir does not exist?
+	if [ ! -d "$dotfilesDir/shell/profile.d" ]; then
+		.run "mkdir -p '$dotfilesDir/shell/profile.d'"
+	fi
 	profileHomeFile="${dotfilesDir}/shell/profile.d/golang.sh"
 	echo -e "writing to ${cFile}${profileHomeFile}${cNone}:"
 	echo -en "${cYellow}"
-	.toLines "${profileHome[@]}"
-	echo -en "${cNone}"
-	.toLines "${profileHome[@]}" | tee ${profileHomeFile} >/dev/null
+	.toLines "${profileHome[@]}" | tee ${profileHomeFile}
 	res=$?
 	if [ $res = 0 ]; then
 		echo -e $cGreen"ok"$cNone

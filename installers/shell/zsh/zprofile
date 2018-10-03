@@ -6,7 +6,6 @@
 #
 # Global Order: zshenv, zprofile, zshrc, zlogin
 
-echo "tu"
 emulate sh
 . ~/.profile
 emulate zsh
