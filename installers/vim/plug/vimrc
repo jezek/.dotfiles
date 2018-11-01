@@ -13,12 +13,14 @@ Plug 'chrisbra/csv.vim'
 Plug 'tpope/vim-fugitive'
 Plug 'vim-syntastic/syntastic'
 Plug 'mbbill/undotree'
+Plug 'gabrielelana/vim-markdown'
 call plug#end()
 
 """"""""""""""""""""""
 "      Settings      "
 """"""""""""""""""""""
 set nocompatible                " Enables us Vim specific features
+set modelines=0									" dont need modelines and the potential security hazard
 filetype off                    " Reset filetype detection first ...
 filetype plugin indent on       " ... and enable filetype detection
 set ttyfast                     " Indicate fast terminal conn for faster redraw
@@ -31,10 +33,10 @@ set autoread                    " Automatically read changed files
 set autoindent                  " Enabile Autoindent
 set shiftwidth=2                " num of spaces using for autoindent
 set shiftround                  " Round indent to multiple of 'shiftwidth'.  Applies to > and < commands
-set copyindent
+set copyindent									" copy the previous indentation on autoindenting
 set smartindent
 set tabstop=2                   " a tab is 2 spaces
-set smarttab
+set smarttab										" insert tabs on the start of a line according to shiftwidth, not tabstop
 set backspace=indent,eol,start  " allow backspacing over everything in insert mode
 set incsearch                   " Shows the match while typing
 set hlsearch                    " Highlight found searches
@@ -104,11 +106,17 @@ endif
 " Solarized Colorscheme Config
 " ------------------------------------------------------------------
 syntax enable
-set background=dark
 colorscheme solarized
-let g:solarized_termcolors=256
+let g:solarized_contrast="high"
+
+"Setup term color support
 set t_Co=16
-" let g:solarized_contrast="high"
+if $TERM == "xterm-256color" || $TERM == "screen-256color" || $COLORTERM == "gnome-terminal"
+  set t_Co=256
+	let g:solarized_termcolors=256
+endif
+
+set background=dark
 " ------------------------------------------------------------------
 
 """"""""""""""""""""""
@@ -155,7 +163,7 @@ nnoremap <F4> `[v`]
 vnoremap <F4> `[o`]
 
 " Force saving files that require root permission
-cmap w!! w !sudo tee > /dev/null %
+cmap w!! w !sudo tee % >/dev/null
 
 " Ctrl-s saves
 nmap <C-s> <Esc>:w<CR>
