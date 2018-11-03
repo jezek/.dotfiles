@@ -6,10 +6,6 @@ fi
 
 .needCommand select case while uname awk ls tar tee chown mkdir
 
-.toLines() {
-	printf '%s\n' "$@"
-}
-
 #TODO upgrade golang version (inpiration: https://github.com/udhos/update-golang
 if ! .isCmd go; then
 	echo -e "${cCmd}go${cNone} not installed"

@@ -40,6 +40,10 @@ fi
 
 .dotfiles(){ return 1; }
 
+.toLines() {
+	printf '%s\n' "$@"
+}
+
 # Yes/no dialog. Default answer (if pressing enter) is Yes (can be changed)
 # The first argument is the message that the user will see.
 # Second argumenti is optional, and if "n", then default will be No

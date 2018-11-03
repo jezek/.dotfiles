@@ -25,6 +25,7 @@ fi
 
 echo
 
+sshconn="ssh -t -o ControlPath=$HOME/.ssh/connection_pipe_%h_%p_%r -o ControlMaster=auto -o ControlPersist=60"
 .backup_checkDest() {
 	if [ ! $# = 2 ]; then
 		(>&2 echo -e $cErr"Backup error:  .backup_checkDest function need 2 argument, got $#: "$cNone$@)
@@ -35,22 +36,46 @@ echo
 
 	if [ "$remote" = "" ]; then
 		if [ ! -d "$directory" ]; then
-			(>&2 echo -e $cErr"Backup destination check error: destination directory does not exist: "$cFile${directory}$cNone)
-			return 255
+			if .check_yes_no "Remote \"$remote\" destination directory \"$cFile${directory}$cNone\" does not exist. Create?"; then
+				if ! .run "mkdir -p \""$directory"\""; then
+					(>&2 echo -e $cErr"Backup destination check error: creating local destination directory \"$cFile${directory}$cErr\" failed"$cNone)
+					return 255
+				fi
+			else
+				(>&2 echo -e $cErr"Backup destination check error: destination directory does not exist: "$cFile${directory}$cNone)
+				return 255
+			fi
 		fi
 	else
-		if ! .run "ssh $remote '[ -d \""$directory"\" ]'"; then
-			(>&2 echo -e $cErr"Backup destination check error: ssh connection to \"$remote\" failed, or destination directory does not exist: "$cFile${directory}$cNone)
+		if .run "$sshconn $remote 'exit'"; then
+			if ! .run "$sshconn $remote '[ -d \""$directory"\" ]'"; then
+				if .check_yes_no "Remote \"$remote\" destination directory \"$cFile${directory}$cNone\" does not exist. Create?"; then
+					if ! .run "$sshconn $remote 'mkdir -p \""$directory"\" ]'"; then
+						(>&2 echo -e $cErr"Backup destination check error: creating remote \"$cNone${remote}$cErr\" destination directory \"$cFile${directory}$cErr\" failed"$cNone)
+						return 255
+					fi
+				else
+					(>&2 echo -e $cErr"Backup destination check error: remote \"$cNone${remote}$cErr\" destination directory does not exist: "$cFile${directory}$cNone)
+					return 255
+				fi
+			fi
+		else 
+			(>&2 echo -e $cErr"Backup destination check error: ssh connection to \"$cNone${remote}$cErr\" failed"$cNone)
 			return 255
 		fi
 	fi
 	return
 }
 
+
+
+defaultRemote="127.0.0.1"
+defaulDestDirectory="/home/jezek/Zálohy/rribs/$(id -un)@$(hostname)"
+
 backupDestDirectory=""
 backupDestRemote=""
 while true; do # ask for backup destination [[user@]hostname:]path/to/backup/directory
-	echo -e $cInput"1"$cNone" - \"192.168.88.132:/home/jezek\""
+	echo -e $cInput"1"$cNone" - \"$defaultRemote:$defaulDestDirectory\""
 	echo -e $cInput"<enter>"$cNone" - type nothing for exit"
 	echo -e $cInput"[[user@]hostname:]path/to/backup/directory"$cNone" - backup destination. If path is local, will be converted to absolute path."
 	echo -n "Backup destination: "
@@ -58,7 +83,7 @@ while true; do # ask for backup destination [[user@]hostname:]path/to/backup/dir
 	read dest
 	case "$dest" in
 		1 ) 
-			dest="192.168.88.132:/home/jezek"
+			dest="$defaultRemote:$defaulDestDirectory"
 			;; 
 		"" ) 
 			echo -e $cErr"User exited"$cNone
@@ -69,15 +94,26 @@ while true; do # ask for backup destination [[user@]hostname:]path/to/backup/dir
 
 	prefix=${dest%%":"*} # everything before ":"
 	suffix=${dest#*":"} # everything after ":"
+	#TODO bug if dest == "jezek.sk:jezek.sk"
 
 	backupDestDirectory=$suffix
 	if [ ! "${prefix}" = ${suffix} ]; then # ":" in dest, $prefix is remote host
-		#TODO check for host ssh conn is open
-		
-		# send keys to remote
-		if ! .run "ssh-copy-id -n $prefix"; then
-			echo -e $cErr"Failed to send ssh keys to remote: "$cNone${prefix}
+		if .check_yes_no "Do you want to send your ssh keys to remote host fo key-based authentication?"; then 
+			# send keys to remote
+			if ! .run "ssh-copy-id -n $prefix"; then
+				echo -e $cErr"Failed to send ssh keys to remote: "$cNone${prefix}
+				echo
+				continue
+			fi
+		else
+			# check for host ssh conn can be opened and if yes, create master connection
+			if ! .run "$sshconn $prefix 'exit'"; then
+				echo -e $cErr"Failed to connect with ssh to remote: "$cNone${prefix}
+				echo
+				continue
+			fi
 		fi
+		
 		backupDestRemote=$prefix
 	fi
 
@@ -150,40 +186,42 @@ echo
 # create exclude directories array
 backupExcludes=()
 
-echo -e "Mounted points in backup source directory:"
-while read -r i; do # loop though all mountpoints
-	fields=($i)
-	src=${fields[0]}
-	dst=${fields[1]}
+if .check_yes_no "Add mounted points in \"$cFile${backupSourceDirectory}$cNone\" into exclude file?"; then
+	echo -e "Mounted points in backup source directory:"
+	while read -r i; do # loop though all mountpoints
+		fields=($i)
+		src=${fields[0]}
+		dst=${fields[1]}
 
-	case "$dst" in ${backupSourceDirectory}*) # if mount destination is inside our source directory
-		# add to excludes array
-		echo -e $cFile${dst}$cNone" -> "$src
-		backupExcludes+=("$dst")
-	esac
-done < /proc/mounts
-unset fields src dst
-echo
-
-
-echo -e "Searching for \".cache\" directories in backup source directory:"
-
-# search for ".cache" in source excluding mounted points in excludes
-if ! .runRes caches "find '${backupSourceDirectory}' -mount -type d \( -not -perm -g+r,u+r,o+r -prune -or -name '*.cache*' -prune -print \)"; then # do not descend to other filesystems, do not descen do dirs, you have not permissions for, print ".cache" dirs and do not descend
-	printf $cErr"Some errors occured in search"$cNone"\n"
+		case "$dst" in ${backupSourceDirectory}*) # if mount destination is inside our source directory
+			# add to excludes array
+			echo -e $cFile${dst}$cNone" -> "$src
+			backupExcludes+=("$dst")
+		esac
+	done < /proc/mounts
+	unset fields src dst
+	echo
 fi
-if [ "$caches" = "" ]; then 
-	printf "No \".cache\" directories\n"
-else
-	printf "Found \".cache\" directories:\n"
-	while read -r line; do # loop though all findings
-		# add to excludes array
-		printf "$cFile${line}$cNone\n"
-		backupExcludes+=("$line")
-	done <<< $caches
+
+
+if .check_yes_no "Search for \".cache\" directories in backup source directory and add them into exclude file?"; then
+	# search for ".cache" in source excluding mounted points in excludes
+	if ! .runRes caches "find '${backupSourceDirectory}' -mount -type d \( -not -perm -g+r,u+r,o+r -prune -or -name '*.cache*' -prune -print \)"; then # do not descend to other filesystems, do not descen do dirs, you have not permissions for, print ".cache" dirs and do not descend
+		printf $cErr"Some errors occured in search"$cNone"\n"
+	fi
+	if [ "$caches" = "" ]; then 
+		printf "No \".cache\" directories\n"
+	else
+		printf "Found \".cache\" directories:\n"
+		while read -r line; do # loop though all findings
+			# add to excludes array
+			printf "$cFile${line}$cNone\n"
+			backupExcludes+=("$line")
+		done <<< $caches
+	fi
+	unset caches line
+	echo
 fi
-unset caches line
-echo
 
 echo -e "Deploying backup configuration:"
 
