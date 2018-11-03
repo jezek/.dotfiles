@@ -3,4 +3,4 @@
 	url = git@github.com:lordadamson/git-summary.git
 [submodule "installers/backup/rsync-incremental-backup"]
 	path = installers/backup/rsync-incremental-backup
-	url = git@github.com:pedroetb/rsync-incremental-backup.git
+	url = git@github.com:jezek/rsync-incremental-backup.git
