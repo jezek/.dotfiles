@@ -57,7 +57,7 @@ fi
 
 backupExcludes=()
 # load excludes from file
-backupExcludesFile="${dotBackupDir}/excludes"
+backupExcludesFile="${dotBackupDir}/exclude.txt"
 if [ -f "${backupExcludesFile}" ]; then
 	# load to array per line
 	while read -r line; do
@@ -96,17 +96,25 @@ unset backupExcludes
 
 # exit with error if array not empty
 if [ ${#backupMountpointsNotExcluded[@]} -gt 0 ]; then
-	echo $cErr"Not excluded mount points:"$cNone
+	echo -e $cErr"Not excluded mount points:"$cNone
 	.toLines $backupMountpointsNotExcluded
 	exit 3
 fi
 
-if ! .needCommand rsync scp ssh; then
-	exit 4
+if [ ! -z "$backupDestRemote" ]; then
+	if ! .needCommand rsync scp ssh; then
+		exit 4
+	fi
 fi
 
-#TODO fork & rewrite rsync-incremental-backup to pass variables as parameters, or set parameters from enviroment
-#TODO backup more directories
-echo "run: ${ribs} ${ribsParams}"
-exit
+#TODO exclude file not working
+export ownFolderName=".dotfiles/backup"
+export interactiveMode="yes"
+if ! .run "${ribs} ${ribsParams}"; then
+	echo -e $cErr"Error executing $cFile${ribs}"$cNone
+	exit 255
+fi
+
+exit 0
 ( cd $dotBackupDir ; pwd ; .run "${ribs} ${ribsParams}" )
+#TODO backup more directories

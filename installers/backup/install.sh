@@ -228,7 +228,7 @@ echo -e "Deploying backup configuration:"
 .run "mkdir -p '${dotBackupDir}'"
 
 # deploy exclude file
-excludeFile="${dotBackupDir}/excludes"
+excludeFile="${dotBackupDir}/exclude.txt"
 .run "touch '$excludeFile'"
 printf "%s\n" "${backupExcludes[@]}" | tee "$excludeFile"
 echo
