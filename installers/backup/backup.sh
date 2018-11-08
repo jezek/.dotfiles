@@ -77,9 +77,12 @@ while read -r i; do # loop though all mountpoints
 	dst=${fields[1]}
 
 	case "$dst" in ${backupSourceDirectory}*) # if mount destination is inside our source directory
+		# convert dst to exclude format
+		dst="- ""${dst#$backupSourceDirectory}""/"
 		# look if dir is in excludes
 		found=0
 		for exclude in "${backupExcludes[@]}"; do
+			#TODO look for includes "+ /..." before $dst is found, may include mountpoint
 			if [ "$dst" == "$exclude" ]; then
 				found=1
 				break
@@ -94,10 +97,11 @@ done < /proc/mounts
 unset fields src dst exclude found
 unset backupExcludes
 
+#TODO what if I do want to process mountpoint, which is not in excludes?
 # exit with error if array not empty
 if [ ${#backupMountpointsNotExcluded[@]} -gt 0 ]; then
 	echo -e $cErr"Not excluded mount points:"$cNone
-	.toLines $backupMountpointsNotExcluded
+	.toLines "${backupMountpointsNotExcluded[@]}"
 	exit 3
 fi
 
@@ -107,7 +111,6 @@ if [ ! -z "$backupDestRemote" ]; then
 	fi
 fi
 
-#TODO exclude file not working
 export ownFolderName=".dotfiles/backup"
 export interactiveMode="yes"
 if ! .run "${ribs} ${ribsParams}"; then

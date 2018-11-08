@@ -76,6 +76,7 @@ backupDestDirectory=""
 backupDestRemote=""
 while true; do # ask for backup destination [[user@]hostname:]path/to/backup/directory
 	echo -e $cInput"1"$cNone" - \"$defaultRemote:$defaulDestDirectory\""
+	echo -e $cInput"2"$cNone" - \"$defaulDestDirectory\""
 	echo -e $cInput"<enter>"$cNone" - type nothing for exit"
 	echo -e $cInput"[[user@]hostname:]path/to/backup/directory"$cNone" - backup destination. If path is local, will be converted to absolute path."
 	echo -n "Backup destination: "
@@ -84,6 +85,9 @@ while true; do # ask for backup destination [[user@]hostname:]path/to/backup/dir
 	case "$dest" in
 		1 ) 
 			dest="$defaultRemote:$defaulDestDirectory"
+			;; 
+		2 ) 
+			dest="$defaulDestDirectory"
 			;; 
 		"" ) 
 			echo -e $cErr"User exited"$cNone
@@ -144,7 +148,7 @@ echo
 
 backupSourceDirectory=""
 while true; do # ask for backup source & check
-	echo -e $cInput"1"$cNone" - \"$HOME\""
+	echo -e $cInput"1"$cNone" - \"$HOME/pripojenia\""
 	echo -e $cInput"<enter>"$cNone" - type nothing for exit"
 	echo -e $cInput"path/to/directory/to/backup"$cNone" - source directory to backup from. Will be cnverted to absolute path"
 	echo -n "Backup source: "
@@ -152,7 +156,7 @@ while true; do # ask for backup source & check
 	read src
 	case "$src" in
 		1 ) 
-			src="$HOME"
+			src="$HOME/pripojenia"
 			;; 
 		"" ) 
 			echo -e $cErr"User exited"$cNone
@@ -177,7 +181,6 @@ while true; do # ask for backup source & check
 done
 unset src
  
-backupSourceDirectory=$HOME
 echo
 echo -e "Backup source entered: "$cFile${backupSourceDirectory}$cNone
 echo
@@ -196,7 +199,7 @@ if .check_yes_no "Add mounted points in \"$cFile${backupSourceDirectory}$cNone\"
 		case "$dst" in ${backupSourceDirectory}*) # if mount destination is inside our source directory
 			# add to excludes array
 			echo -e $cFile${dst}$cNone" -> "$src
-			backupExcludes+=("$dst")
+			backupExcludes+=("- ""${dst#$backupSourceDirectory}""/")
 		esac
 	done < /proc/mounts
 	unset fields src dst
@@ -216,7 +219,7 @@ if .check_yes_no "Search for \".cache\" directories in backup source directory a
 		while read -r line; do # loop though all findings
 			# add to excludes array
 			printf "$cFile${line}$cNone\n"
-			backupExcludes+=("$line")
+			backupExcludes+=("- ""${line#$backupSourceDirectory}""/")
 		done <<< $caches
 	fi
 	unset caches line
