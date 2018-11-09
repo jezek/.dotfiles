@@ -3,12 +3,7 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 #TODO make it, so we can do it via one wget (goinup)
-
 .needCommand select case while uname awk ls tar tee chown mkdir
-
-.toLines() {
-	printf '%s\n' "$@"
-}
 
 #TODO upgrade golang version (inpiration: https://github.com/udhos/update-golang
 if ! .isCmd go; then
@@ -28,7 +23,7 @@ if ! .isCmd go; then
 					exit 1
 				fi
 				[ "$1" = plugin ] && return
-				exit
+				exit 0
 				;;
 			"${goInstallSources[2]}")
 				[ "$1" = plugin ] && return
@@ -36,6 +31,13 @@ if ! .isCmd go; then
 				;;
 		esac
 	done
+else
+	#TODO check if upgrade avalable, if yes, ask if upgrade
+	if ! .check_yes_no "Go already installed. Continue and possibly upgrade?"; then
+		[ "$1" = plugin ] && return
+		exit 0
+	fi
+	#TODO only upgrade, don't ask any questions
 fi
 
 #TODO uninstall apt installed golang for sure

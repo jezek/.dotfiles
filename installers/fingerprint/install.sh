@@ -5,7 +5,7 @@ fi
 
 if .isCmd fingerprint-gui; then
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 fingerprintPpaUrl="https://launchpad.net/~fingerprint/+archive/ubuntu/fingerprint-gui"

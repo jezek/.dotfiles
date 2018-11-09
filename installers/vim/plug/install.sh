@@ -5,7 +5,7 @@ fi
 
 if ! .isCmd vim; then
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 vimplug="$HOME/.vim/autoload/plug.vim"
@@ -25,7 +25,7 @@ fi
 
 if [ ! -f $vimplug ]; then
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 .hardlink "$dotfilesDir/installers/vim/plug/vimrc" "$HOME/.vimrc"

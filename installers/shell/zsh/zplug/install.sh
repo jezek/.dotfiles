@@ -25,7 +25,7 @@ if [ ! -d $zplugDir ]; then
 fi
 if [ ! -d $zplugDir ]; then
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 if [ ! -d "$dotfilesDir/shell/profile.d" ]; then

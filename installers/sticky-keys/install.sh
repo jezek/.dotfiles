@@ -5,7 +5,7 @@ fi
 
 if ! .check_yes_no "Install sticky key support?"; then
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 if .installCommand xkbset; then

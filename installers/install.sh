@@ -15,6 +15,7 @@ cWarn=$cRed
 cCmd=$cGreen
 cPkg=$cBlue
 cFile=$cMagenta
+cInput=$cYellow
 
 # debug=0
 onlyEssential=0
@@ -39,10 +40,14 @@ fi
 
 .dotfiles(){ return 1; }
 
+.toLines() {
+	printf '%s\n' "$@"
+}
+
 # Yes/no dialog. Default answer (if pressing enter) is Yes (can be changed)
 # The first argument is the message that the user will see.
 # Second argumenti is optional, and if "n", then default will be No
-# If the user enters n/N, send exit 1.
+# If the user enters n/N, return 1, else 0.
 .check_yes_no(){
 	while true; do
 		local default="y"
@@ -398,7 +403,8 @@ plugins=(\
 	golang \
 	mc audacious chromium \
 	fingerprint \
-	wmctrl)
+	wmctrl \
+	backup)
 
 
 

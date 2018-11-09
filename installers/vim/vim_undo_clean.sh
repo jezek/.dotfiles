@@ -9,7 +9,7 @@ vimundoDir="$HOME/.vim/undo/"
 
 if [ ! -d "$vimundoDir" ]; then
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 if [ $# = 0 ]; then
@@ -22,7 +22,7 @@ if [ $# = 0 ]; then
 	fi
 
 	[ "$1" = plugin ] && return
-	exit
+	exit 0
 fi
 
 
