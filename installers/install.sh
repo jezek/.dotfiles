@@ -403,7 +403,8 @@ plugins=(\
 	golang \
 	mc audacious chromium \
 	fingerprint \
-	wmctrl)
+	wmctrl \
+	backup)
 
 
 

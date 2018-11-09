@@ -67,16 +67,13 @@ sshconn="ssh -t -o ControlPath=$HOME/.ssh/connection_pipe_%h_%p_%r -o ControlMas
 	return
 }
 
-
-
-defaultRemote="127.0.0.1"
-defaulDestDirectory="/home/jezek/Zálohy/rribs/$(id -un)@$(hostname)"
+defaultRemote="jezek@chicki.sk"
+defaulDestDirectory="/home/jezek/Zálohy/rib/$(id -un)@$(hostname)"
 
 backupDestDirectory=""
 backupDestRemote=""
 while true; do # ask for backup destination [[user@]hostname:]path/to/backup/directory
 	echo -e $cInput"1"$cNone" - \"$defaultRemote:$defaulDestDirectory\""
-	echo -e $cInput"2"$cNone" - \"$defaulDestDirectory\""
 	echo -e $cInput"<enter>"$cNone" - type nothing for exit"
 	echo -e $cInput"[[user@]hostname:]path/to/backup/directory"$cNone" - backup destination. If path is local, will be converted to absolute path."
 	echo -n "Backup destination: "
@@ -85,9 +82,6 @@ while true; do # ask for backup destination [[user@]hostname:]path/to/backup/dir
 	case "$dest" in
 		1 ) 
 			dest="$defaultRemote:$defaulDestDirectory"
-			;; 
-		2 ) 
-			dest="$defaulDestDirectory"
 			;; 
 		"" ) 
 			echo -e $cErr"User exited"$cNone
@@ -102,6 +96,7 @@ while true; do # ask for backup destination [[user@]hostname:]path/to/backup/dir
 
 	backupDestDirectory=$suffix
 	if [ ! "${prefix}" = ${suffix} ]; then # ":" in dest, $prefix is remote host
+		#TODO check if auth needed
 		if .check_yes_no "Do you want to send your ssh keys to remote host fo key-based authentication?"; then 
 			# send keys to remote
 			if ! .run "ssh-copy-id -n $prefix"; then
@@ -148,7 +143,7 @@ echo
 
 backupSourceDirectory=""
 while true; do # ask for backup source & check
-	echo -e $cInput"1"$cNone" - \"$HOME/pripojenia\""
+	echo -e $cInput"1"$cNone" - \"$HOME\""
 	echo -e $cInput"<enter>"$cNone" - type nothing for exit"
 	echo -e $cInput"path/to/directory/to/backup"$cNone" - source directory to backup from. Will be cnverted to absolute path"
 	echo -n "Backup source: "
@@ -156,7 +151,7 @@ while true; do # ask for backup source & check
 	read src
 	case "$src" in
 		1 ) 
-			src="$HOME/pripojenia"
+			src="$HOME"
 			;; 
 		"" ) 
 			echo -e $cErr"User exited"$cNone
@@ -225,6 +220,7 @@ if .check_yes_no "Search for \".cache\" directories in backup source directory a
 	unset caches line
 	echo
 fi
+#TODO ask if exclude Downloads, Music, Videos... or figure out, how to arrange home dirs in devices
 
 echo -e "Deploying backup configuration:"
 
