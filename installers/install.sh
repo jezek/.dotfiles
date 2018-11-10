@@ -346,13 +346,7 @@ if [ ! "$res" = 1 ]; then
 			if [ ! -z $comment ]; then
 				githubKeyTitle=$comment
 			fi
-			.runRes 
-		
-			
-	
-		
-				local packages=()
-				pubKey "cat $pubKeyFile"
+			.runRes pubKey "cat $pubKeyFile"
 			res=$?
 			if [ $res = 0 ]; then
 				.run "curl -u \"$githubName\" -X POST -H \"Content-type: application/json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys\""
