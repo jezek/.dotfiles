@@ -1,6 +1,13 @@
 #! /bin/bash
 #TODO make installer to be used in onliner with curl in any current directory
 
+#TODO instller errors on fp2
+# git-summary not found
+# vim_undo_clean.sh no found 
+# fingerprint - lsusb not found
+# vim first plug install echoes solarize not found
+# backup cant connect to jezek@192.168.88.132
+
 # colors
 cNone='\e[0m'
 # named colors
