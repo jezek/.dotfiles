@@ -318,6 +318,8 @@ endfunction
 
 " Don't use vim-go code completion, deoplete-go is in charge for that.
 let g:go_code_completion_enabled = 0
+" Disable go version warning
+let g:go_version_warning = 0
 " ------------------------------------------------------------------
 
 " ------------------------------------------------------------------
@@ -408,3 +410,10 @@ nmap <leader>e :Errors<cr>
 
 " gui font settings
 set guifont=Source\ Code\ Pro\ 10
+
+" don't leave vim output in shell after exit
+"TODO try arrow fix with this patch & see if it works
+if &term =~ "linux"
+	let &t_ti = "\<Esc>[?47h"
+	let &t_te = "\<Esc>[?47l"
+endif
