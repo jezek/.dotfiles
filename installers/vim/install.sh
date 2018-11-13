@@ -23,3 +23,5 @@ else
 	echo -e $cErr"Instalation of "$cCmd"gvim"$cErr" failed."$cNone
 fi
 
+# register as default editor
+.run "sudo update-alternatives --config editor"

@@ -1,6 +1,13 @@
 #! /bin/bash
 #TODO make installer to be used in onliner with curl in any current directory
 
+#TODO instller errors on fp2
+# git-summary not found
+# vim_undo_clean.sh no found 
+# fingerprint - lsusb not found
+# vim first plug install echoes solarize not found
+# backup cant connect to jezek@192.168.88.132
+
 # colors
 cNone='\e[0m'
 # named colors
@@ -291,6 +298,9 @@ fi
 
 dotfilesDir="$HOME/.dotfiles"
 dotfilesBin="${dotfilesDir}/bin"
+if [ ! -d "${dotfilesBin}" ]; then
+	.run "mkdir -p '$dotfilesBin'"
+fi
 github="https://github.com/"
 githubName="jezek"
 
@@ -346,13 +356,7 @@ if [ ! "$res" = 1 ]; then
 			if [ ! -z $comment ]; then
 				githubKeyTitle=$comment
 			fi
-			.runRes 
-		
-			
-	
-		
-				local packages=()
-				pubKey "cat $pubKeyFile"
+			.runRes pubKey "cat $pubKeyFile"
 			res=$?
 			if [ $res = 0 ]; then
 				.run "curl -u \"$githubName\" -X POST -H \"Content-type: application/json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys\""
