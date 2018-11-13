@@ -298,6 +298,9 @@ fi
 
 dotfilesDir="$HOME/.dotfiles"
 dotfilesBin="${dotfilesDir}/bin"
+if [ ! -d "${dotfilesBin}" ]; then
+	.run "mkdir -p '$dotfilesBin'"
+fi
 github="https://github.com/"
 githubName="jezek"
 
