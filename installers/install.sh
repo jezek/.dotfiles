@@ -298,9 +298,6 @@ fi
 
 dotfilesDir="$HOME/.dotfiles"
 dotfilesBin="${dotfilesDir}/bin"
-if [ ! -d "${dotfilesBin}" ]; then
-	.run "mkdir -p '$dotfilesBin'"
-fi
 github="https://github.com/"
 githubName="jezek"
 
@@ -391,13 +388,21 @@ fi
 
 
 if [ ! -d $dotfilesDir ]; then
+	if ! .run "mkdir -p '$dotfilesDir'"; then
+		echo -e $cErr"Could not create $cFile'$dotfilesDir'"$cNone
+		exit 1
+	fi
 	#TODO test if allways clones to right directory (is running directory independent)
-	gitdotfiles=""
-	.run "git clone $github$githubName/.dotfiles.git"
+	.run "git clone $github$githubName/.dotfiles.git '$dotfilesDir'" 
+
 	if [ ! -d $dotfilesDir ]; then
 		echo "clonning ${cFile}$dotfilesDir${cNone} from github failed"
 		exit 1
 	fi
+fi
+
+if [ ! -d "${dotfilesBin}" ]; then
+	.run "mkdir -p '$dotfilesBin'"
 fi
 
 plugins=(\
