@@ -33,17 +33,36 @@ if ! .isCmd go; then
 	done
 else
 	#TODO check if upgrade avalable, if yes, ask if upgrade
-	if ! .check_yes_no "Go already installed. Continue and possibly upgrade?"; then
+	.runRes goInstallVersion "curl https://golang.org/dl/ 2>/dev/null | grep -oP 'go\d+(\.\d+(\.\d+)?)?\s' | sort -V --reverse | head -1 | sed -e 's/\s\+$//'"
+	if [ -z "$goInstallVersion" ]; then
+		echo -e $cErr"fetching latest golang version failed"$cNone
+		[ "$1" = plugin ] && return 1
+		exit 1
+	fi
+
+	.runRes currentGoVersion "go version"
+
+	if ! .check_yes_no "Go already installed ${currentGoVersion}. Continue and upgrade to ${goInstallVersion}?"; then
 		[ "$1" = plugin ] && return
 		exit 0
 	fi
-	#TODO only upgrade, don't ask any questions
+	
+
+	.runRes goRoot "go env | grep GOROOT | sed 's/GOROOT=\"\\([^\"]\\+\\)\"/\\1/'"
+	backup="${goRoot}~"
+	if [ ! -w "$goRoot" ]; then
+		goSudo=$SUDO
+	fi
+	.run $goSudo" mv '$goRoot' '$backup'"
+	.run $goSudo" mkdir -p '$goRoot'"
+	if [ ! -d "$goRoot" ]; then 
+		unset goRoot
+	fi
 fi
 
 #TODO uninstall apt installed golang for sure
 # go not installed, install latest from golang.org
 choices=("/usr/local/go" "$HOME/.go")
-goSudo=""
 while [ -z ${goRoot+x} ]; do
 	echo "Select golang root dir:"
 	select choice in "${choices[@]}"; do
@@ -59,10 +78,9 @@ while [ -z ${goRoot+x} ]; do
 	done
 	if [ -d "$choice" ] && [ "$(ls -A $choice)" ]; then
 		# is dir and not empty
-		if .check_yes_no "backup ${cDir}$choice${cNone}?"; then
-			.run $goSudo" mv $choice ${choice}~"
-		else
-			.run $goSudo" rm -rf $choice"
+		if [ -z ${backup+x} ]; then
+			backup="${choice}~"
+			.run $goSudo" mv $choice $backup"
 		fi
 	fi
 	if [ -d "$choice" ] && [ "$(ls -A $choice)" ]; then
@@ -79,13 +97,14 @@ while [ -z ${goRoot+x} ]; do
 	fi
 done
 
+restoreBackup(){
+	if [ ! "$backup" = "" ]; then
+		echo -e "Restoring backup"
+		.run $goSudo" mv $backup $goRoot"
+	fi
+}
+
 # got $goRoot created
-.runRes goInstallVersion "curl https://golang.org/dl/ 2>/dev/null | grep -oP 'go\d+(\.\d+(\.\d+)?)?\s' | sort -V --reverse | head -1 | sed -e 's/\s\+$//'"
-if [ -z "$goInstallVersion" ]; then
-	echo -e $cErr"fetching latest golang version failed"$cNone
-	[ "$1" = plugin ] && return 2
-	exit 2
-fi
 
 .runRes goInstallArchitecture "uname -m"
 if [[ "${goInstallArchitecture}" =~ arm ]]; then
@@ -100,13 +119,13 @@ echo "latest go file: $goInstallFile"
 
 if ! .run "curl --head -sf ${goInstallFile} >/dev/null"; then
 	echo -e $cErr"file ${cFile}${goInstallFile}${cErr} not found"$cNone
-	#TODO if backup, revert
+	restoreBackup
 	[ "$1" = plugin ] && return 3
 	exit 3
 fi
 if ! .run "curl -f ${goInstallFile} | ${goSudo} tar -C ${goRoot} --strip-components=1 -vxzf - go"; then
 	echo -e $cErr"failed to extract go files from ${cFile}${goInstallFile}${cErr} to ${cDir}${goRoot}"$cNone
-	#TODO if backup, revert
+	restoreBackup
 	[ "$1" = plugin ] && return 4
 	exit 4
 fi
@@ -168,6 +187,12 @@ if [ ${#profileHome[@]} -ne 0 ]; then
 	fi
 	source <(.toLines "${profileHome[@]}")
 	profileChanged=1
+fi
+
+if [ ! "$backup" = "" ]; then
+	if .check_yes_no "remove backup "$cFile${backup}$cNone"?"; then
+		.run $goSudo" rm -rf '$backup'"
+	fi
 fi
 
 if [ "$profileChanged" = 1 ]; then
