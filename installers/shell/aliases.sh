@@ -1,3 +1,4 @@
+alias l='ls -aF --group-directories-first'
 alias ll='ls -lF --group-directories-first'
 alias lla='ls -lFA --group-directories-first'
 
