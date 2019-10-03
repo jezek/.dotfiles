@@ -399,6 +399,9 @@ if [ ! -d $dotfilesDir ]; then
 		echo "clonning ${cFile}$dotfilesDir${cNone} from github failed"
 		exit 1
 	fi
+
+	.run "git -C '$dotfilesDir' submodule init"
+	.run "git -C '$dotfilesDir' submodule update"
 fi
 
 if [ ! -d "${dotfilesBin}" ]; then
