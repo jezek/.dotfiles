@@ -5,10 +5,18 @@ fi
 #TODO make it, so we can do it via one wget (goinup)
 .needCommand select case while uname awk ls tar tee chown mkdir
 
+# Get latest golang version from net
+.runRes goInstallVersion "curl https://golang.org/dl/ 2>/dev/null | grep -oP 'go\d+(\.\d+(\.\d+)?)?\s' | sort -V --reverse | head -1 | sed -e 's/\s\+$//'"
+if [ -z "$goInstallVersion" ]; then
+	echo -e $cErr"fetching latest golang version failed"$cNone
+	[ "$1" = plugin ] && return 1
+	exit 1
+fi
+
 #TODO upgrade golang version (inpiration: https://github.com/udhos/update-golang
 if ! .isCmd go; then
 	echo -e "${cCmd}go${cNone} not installed"
-	goInstallSources=("latest from golang.org" "apt install golang gcc" "don't install")
+	goInstallSources=("latest from golang.org (${goInstallVersion})" "apt install golang gcc" "don't install")
 	select src in "${goInstallSources[@]}"; do
 		case $src in
 			"${goInstallSources[0]}") 
@@ -33,12 +41,6 @@ if ! .isCmd go; then
 	done
 else
 	#TODO check if upgrade avalable, if yes, ask if upgrade
-	.runRes goInstallVersion "curl https://golang.org/dl/ 2>/dev/null | grep -oP 'go\d+(\.\d+(\.\d+)?)?\s' | sort -V --reverse | head -1 | sed -e 's/\s\+$//'"
-	if [ -z "$goInstallVersion" ]; then
-		echo -e $cErr"fetching latest golang version failed"$cNone
-		[ "$1" = plugin ] && return 1
-		exit 1
-	fi
 
 	.runRes currentGoVersion "go version"
 
