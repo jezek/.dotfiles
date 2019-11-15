@@ -7,14 +7,20 @@ if .isCmd fingerprint-gui; then
 	[ "$1" = plugin ] && return
 	exit 0
 fi
-
-fingerprintPpaUrl="https://launchpad.net/~fingerprint/+archive/ubuntu/fingerprint-gui"
-.runRes fingerprintSupportedDevices "curl $fingerprintPpaUrl | sed -e 's/<[^>]*>//g' | grep -o '[0-9a-f]\\{4\\}:[0-9a-f]\\{4\}'"
+fingerprintSupportedDevices=()
+fingerprintSupportedDevicesUrls=("https://fprint.freedesktop.org/supported-devices.html" "https://launchpad.net/~fingerprint/+archive/ubuntu/fingerprint-gui")
+for url in $fingerprintSupportedDevicesUrls; do
+	.runRes urlSupportedDevices "curl $url | sed -e 's/<[^>]*>//g' | grep -o '[0-9a-f]\\{4\\}:[0-9a-f]\\{4\\}'"
+	fingerprintSupportedDevices=( "${fingerprintSupportedDevices[@]}" "${urlSupportedDevices[@]}" ) 
+	unset urlSupportedDevices
+done
 res=$?
 if [ $res = 0 ]; then
-	.runRes usbDevices "lsusb | grep -o '[0-9a-f]\\{4\\}:[0-9a-f]\\{4\}'"
+	.runRes usbDevices "lsusb | grep -o '[0-9a-f]\\{4\\}:[0-9a-f]\\{4\\}'"
 	res=$?
 	if [ $res = 0 ]; then
+		#echo "my: "$usbDevices
+		#echo "supported: "$fingerprintSupportedDevices
 		fingerprintSupported=0
 		for device in $usbDevices; do
 			for supported in $fingerprintSupportedDevices; do
