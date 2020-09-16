@@ -111,6 +111,8 @@ restoreBackup(){
 .runRes goInstallArchitecture "uname -m"
 if [[ "${goInstallArchitecture}" =~ arm ]]; then
 	goInstallArchitecture="armv6l"
+elif [[ "${goInstallArchitecture}" =~ aarch64 ]]; then
+	goInstallArchitecture="arm64"
 elif [[ "${goInstallArchitecture}" =~ 64 ]]; then
 	goInstallArchitecture="amd64"
 else
