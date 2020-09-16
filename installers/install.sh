@@ -288,14 +288,6 @@ fi
 	return
 }
 
-if ! .needCommand apt add-apt-repository git curl ssh sed date cp mv; then
-	echo "Essential program are not available: "$missing
-	if [ $onlyEssential = 1 ]; then
-		return 1
-	fi
-	exit 1
-fi
-
 dotfilesDir="$HOME/.dotfiles"
 dotfilesBin="${dotfilesDir}/bin"
 github="https://github.com/"
@@ -305,6 +297,14 @@ if [ $onlyEssential = 1 ]; then
 	return
 fi
 # not essentials
+
+if ! .needCommand apt add-apt-repository git curl ssh sed date cp mv; then
+	echo "Essential program are not available: "$missing
+	if [ $onlyEssential = 1 ]; then
+		return 1
+	fi
+	exit 1
+fi
 
 #echo "testing:"
 #
