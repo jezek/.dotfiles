@@ -35,9 +35,6 @@ alias cl=cdls
 mkdircd () { mkdir -p "$@" && eval cd "\"\$$#\""; }
 alias md=mkdircd
 
-#TODO find this alias a propper place, or check for git command
-alias gsba='git show-branch -a --color=always | less -X'
-
 #TODO find this alias a propper place, or check for curl command
 # QR code generation
 qr () {
@@ -64,3 +61,8 @@ fi
 # From https://blog.depau.eu/2021/07/19/btrfs-troubleshooting/
 alias cp='cp --reflink=auto'
 # "auto" will fallback to standard copying if reflink isn't available
+#
+#TODO find this alias a propper place, or check for git command
+alias gsba='git show-branch -a --color=always | less -X'
+alias htop='libertine-container-manager exec -c htop'
+alias mc='libertine-launch --id xenial mc'

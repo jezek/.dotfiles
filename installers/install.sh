@@ -354,7 +354,6 @@ local pmi=$(.packageManagerInstall)
 	return
 }
 
-
 dotfilesDir="$HOME/.dotfiles"
 dotfilesBin="${dotfilesDir}/bin"
 github="https://github.com/"
