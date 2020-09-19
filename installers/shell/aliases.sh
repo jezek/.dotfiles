@@ -29,3 +29,5 @@ alias md=mkdircd
 
 #TODO find this alias a propper place, or check for git command
 alias gsba='git show-branch -a'
+alias htop='libertine-container-manager exec -c htop'
+alias mc='libertine-launch --id xenial mc'

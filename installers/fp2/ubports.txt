@@ -1,0 +1,4 @@
+libertine-container-manager install-package -p htop
+alias htop='libertine-container-manager exec -c htop'
+libertine-container-manager install-package -p mc
+alias mc='libertine-launch --id xenial mc'
