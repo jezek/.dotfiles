@@ -293,20 +293,18 @@ dotfilesBin="${dotfilesDir}/bin"
 github="https://github.com/"
 githubName="jezek"
 
-if ! .needCommand apt add-apt-repository git ssh sed date cp mv; then
+if [ $onlyEssential = 1 ]; then
+	return
+fi
+# not essentials
+
+if ! .needCommand apt add-apt-repository git curl ssh sed date cp mv; then
 	echo "Essential program are not available: "$missing
 	if [ $onlyEssential = 1 ]; then
 		return 1
 	fi
 	exit 1
 fi
-
-if [ $onlyEssential = 1 ]; then
-	return
-fi
-# not essentials
-
-
 
 #echo "testing:"
 #
@@ -401,6 +399,9 @@ if [ ! -d $dotfilesDir ]; then
 		echo "clonning ${cFile}$dotfilesDir${cNone} from github failed"
 		exit 1
 	fi
+
+	.run "git -C '$dotfilesDir' submodule init"
+	.run "git -C '$dotfilesDir' submodule update"
 fi
 
 if [ ! -d "${dotfilesBin}" ]; then

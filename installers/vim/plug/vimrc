@@ -14,6 +14,9 @@ Plug 'tpope/vim-fugitive'
 Plug 'vim-syntastic/syntastic'
 Plug 'mbbill/undotree'
 Plug 'gabrielelana/vim-markdown'
+Plug 'peterhoeg/vim-qml'
+Plug 'vim-scripts/indentpython.vim'
+Plug 'nvie/vim-flake8'
 call plug#end()
 
 """"""""""""""""""""""
@@ -171,6 +174,9 @@ imap <C-s> <Esc>:w<CR>a
 " use ; as :
 map ; :
 
+" select all shortcut
+nnoremap <leader>va ggVG
+
 """""""""""""""""""""
 "      Plugins      "
 """""""""""""""""""""
@@ -197,7 +203,6 @@ imap <C-g> <esc>:<C-u>GoDeclsDir<cr>
 augroup go
   autocmd!
 
-  " Show by default 4 spaces for a tab
   autocmd BufNewFile,BufRead *.go setlocal noexpandtab tabstop=2 shiftwidth=2
 
   " :GoBuild and :GoTestCompile
@@ -264,6 +269,17 @@ function! s:build_go_files()
   endif
 endfunction
 let g:go_version_warning = 0
+" ------------------------------------------------------------------
+
+" ------------------------------------------------------------------
+" Qml settings
+" ------------------------------------------------------------------
+augroup qml
+  autocmd!
+
+  autocmd BufNewFile,BufRead *.qml setlocal expandtab tabstop=4 shiftwidth=4
+
+augroup END
 " ------------------------------------------------------------------
 
 " ------------------------------------------------------------------
