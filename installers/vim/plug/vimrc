@@ -285,8 +285,6 @@ let g:deoplete#enable_at_startup = 1
 " Auto select firt word
 set completeopt+=noinsert
 
-imap <expr><ESC> pumvisible() ? "\<C-e>" : "\<ESC>"
-
 call deoplete#custom#option({
 \ 'smart_case': v:true,
 \ 'auto_complete_delay': 500,
