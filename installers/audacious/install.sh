@@ -12,7 +12,12 @@ else
 	exit 1
 fi
 
-audaConfig="$HOME/.config/audacious/config"
+audaConfigDir="$HOME/.config/audacious"
+if [ ! -d "${audaConfigDir}" ]; then
+	.run "mkdir -p $audaConfigDir"
+fi
+
+audaConfig="${audaConfigDir}/config"
 dotAudaConfig="$dotfilesDir/installers/audacious/config"
 if [ -f $dotAudaConfig ]; then
 	if [ ! -f $audaConfig ]; then
