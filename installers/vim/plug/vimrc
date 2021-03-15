@@ -4,7 +4,7 @@ Plug 'altercation/vim-colors-solarized'
 Plug 'vim-airline/vim-airline' | Plug 'vim-airline/vim-airline-themes'
 Plug 'fatih/vim-go'
 " Plug 'ctrlpvim/ctrlp.vim'
-Plug 'Yggdroot/LeaderF'
+" Plug 'Yggdroot/LeaderF'
 Plug 'majutsushi/tagbar'
 Plug 'AndrewRadev/splitjoin.vim'
 Plug 'Shougo/deoplete.nvim' | Plug 'roxma/nvim-yarp' | Plug 'roxma/vim-hug-neovim-rpc'
@@ -23,7 +23,7 @@ call plug#end()
 "      Settings      "
 """"""""""""""""""""""
 set nocompatible                " Enables us Vim specific features
-set modelines=0									" dont need modelines and the potential security hazard
+set modelines=0                 " dont need modelines and the potential security hazard
 filetype off                    " Reset filetype detection first ...
 filetype plugin indent on       " ... and enable filetype detection
 set ttyfast                     " Indicate fast terminal conn for faster redraw
@@ -33,7 +33,7 @@ set laststatus=2                " Show status line always
 set encoding=utf-8              " Set default encoding to UTF-8
 set fileencodings=ucs-bom,utf-8,windows-1250,default,latin1
 set autoread                    " Automatically read changed files
-set autoindent                  " Enabile Autoindent
+set autoindent                  " Enable Autoindent
 set shiftwidth=2                " num of spaces using for autoindent
 set shiftround                  " Round indent to multiple of 'shiftwidth'.  Applies to > and < commands
 set copyindent									" copy the previous indentation on autoindenting
@@ -64,19 +64,19 @@ set nocursorline                " Do not highlight cursor (speeds up highlightin
 set lazyredraw                  " Wait to redraw
 " <Tab> autocompletion like in bash
 set wildmode=longest:full       " Complete till longest common string.  If this doesn't result in a longer string, use the next part. Also start 'wildmenu' if it is enabled.
-set wildmenu                     " Command-line completion operates in an enhanced mode.
-set ruler                        "Always show current posit1ion
-" Set 5 lines to the curors - when moving vertical..
-set so=5
-" do not wrap lines
-set nowrap
-" mark breaks
-let &showbreak = '↳ '
-" todo dynamic set cpo=n
-" do not resize other splits after new split is created
-set noequalalways
-" do not show toolbar in gvim
-set go-=T
+set wildmenu                    " Command-line completion operates in an enhanced mode.
+set ruler                       " Always show current position
+set spell                       " Always use spell check
+set so=5                        " Set 5 lines to the curors - when moving vertical
+set wrap                        " Wrap lines
+set breakindent                 " Indent line breaks (wrapped lines)
+let &showbreak = '↳ '           " Mark breaks
+" set cpo=n
+" todo dynamic set cpo=n (https://stackoverflow.com/questions/5746914/vim-how-to-change-the-showbreak-highlight-color-without-using-the-nontext-color)
+" after open/insert/delete set showbreak prepended with n spaces, where n ~ len(string(line_count))
+set list                        " Show invisible caracters like \n or \t
+set noequalalways               " do not resize other splits after new split is created
+set go-=T                       " do not show toolbar in gvim
 
 " Enable to copy to clipboard for operations like yank, delete, change and put
 " http://stackoverflow.com/questions/20186975/vim-mac-how-to-copy-to-clipboard-without-pbcopy
@@ -87,12 +87,11 @@ endif
 
 " This enables us to undo files even if you exit Vim.
 if has('persistent_undo')
-	let undoDir=expand('~/.vim/undo/')
-	call system('mkdir -p ' . undoDir)
+  let undoDir=expand('~/.vim/undo/')
+  call system('mkdir -p ' . undoDir)
   set undofile
   set undodir=~/.vim/undo/
 endif
-
 
 " ------------------------------------------------------------------
 " Solarized Colorscheme Config
@@ -108,6 +107,15 @@ if $TERM == "xterm-256color" || $TERM == "screen-256color" || $COLORTERM == "gno
 endif
 
 set background=dark
+" Set non text characters to near the same color as Normal ctermbg=234 guibg=#002b36
+hi NonText ctermfg=236 guifg=#103b46
+" Set special key (	) to near the same color as Normal ctermbg=234 guibg=#002b36
+hi SpecialKey ctermfg=236 ctermbg=234 guifg=#103b46 guibg=#002b36
+
+augroup my_colours
+  autocmd!
+  autocmd ColorScheme solarized hi SpellBad cterm=reverse
+augroup END
 " ------------------------------------------------------------------
 
 """"""""""""""""""""""
