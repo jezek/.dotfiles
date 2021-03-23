@@ -69,12 +69,11 @@ set ruler                       " Always show current position
 set spell                       " Always use spell check
 set so=5                        " Set 5 lines to the curors - when moving vertical
 set wrap                        " Wrap lines
+set linebreak                   " Don't wrap lines in middle of a word
 set breakindent                 " Indent line breaks (wrapped lines)
-let &showbreak = '↳ '           " Mark breaks
-" set cpo=n
-" todo dynamic set cpo=n (https://stackoverflow.com/questions/5746914/vim-how-to-change-the-showbreak-highlight-color-without-using-the-nontext-color)
-" after open/insert/delete set showbreak prepended with n spaces, where n ~ len(string(line_count))
-set list                        " Show invisible caracters like \n or \t
+let &showbreak = '↳'           " Mark breaks
+set cpo=n                       " Wrapped line starts at he beginning of line number column
+set list                        " Show invisible characters like \n or \t
 set noequalalways               " do not resize other splits after new split is created
 set go-=T                       " do not show toolbar in gvim
 
@@ -112,10 +111,7 @@ hi NonText ctermfg=236 guifg=#103b46
 " Set special key (	) to near the same color as Normal ctermbg=234 guibg=#002b36
 hi SpecialKey ctermfg=236 ctermbg=234 guifg=#103b46 guibg=#002b36
 
-augroup my_colours
-  autocmd!
-  autocmd ColorScheme solarized hi SpellBad cterm=reverse
-augroup END
+hi SpellBad cterm=underline ctermfg=138
 " ------------------------------------------------------------------
 
 """"""""""""""""""""""
@@ -130,6 +126,9 @@ let mapleader = ","
 map <C-n> :cnext<CR>
 map <C-m> :cprevious<CR>
 nnoremap <leader>a :cclose<CR>
+
+" Add everything from cursor to the end of the line into syntastic error ignore
+nnoremap <leader>i "iy$:let g:syntastic_quiet_messages = { 'regex': '<C-r>i' }<CR>
 
 " Visual linewise up and down by default (and use gj gk to go quicker)
 noremap <Up> gk
