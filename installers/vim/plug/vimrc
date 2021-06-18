@@ -2,21 +2,25 @@
 call plug#begin()
 Plug 'altercation/vim-colors-solarized'
 Plug 'vim-airline/vim-airline' | Plug 'vim-airline/vim-airline-themes'
-Plug 'fatih/vim-go'
+Plug 'fatih/vim-go', { 'for': 'go' }
 " Plug 'ctrlpvim/ctrlp.vim'
 " Plug 'Yggdroot/LeaderF'
 Plug 'majutsushi/tagbar'
 Plug 'AndrewRadev/splitjoin.vim'
 Plug 'Shougo/deoplete.nvim' | Plug 'roxma/nvim-yarp' | Plug 'roxma/vim-hug-neovim-rpc'
+Plug 'deoplete-plugins/deoplete-go', { 'do': 'make' }
 Plug 'Shougo/neosnippet' | Plug 'Shougo/neosnippet-snippets'
 Plug 'chrisbra/csv.vim'
 Plug 'tpope/vim-fugitive'
 Plug 'vim-syntastic/syntastic'
 Plug 'mbbill/undotree'
+" https://github.com/simnalamburt/vim-mundo
 Plug 'gabrielelana/vim-markdown'
 Plug 'peterhoeg/vim-qml'
 Plug 'vim-scripts/indentpython.vim'
 Plug 'nvie/vim-flake8'
+" https://github.com/simeji/winresizer
+" https://github.com/moll/vim-bbye
 call plug#end()
 
 """"""""""""""""""""""
@@ -71,7 +75,7 @@ set so=5                        " Set 5 lines to the curors - when moving vertic
 set wrap                        " Wrap lines
 set linebreak                   " Don't wrap lines in middle of a word
 set breakindent                 " Indent line breaks (wrapped lines)
-let &showbreak = '↳'           " Mark breaks
+let &showbreak = '›››'           " Mark breaks
 set cpo=n                       " Wrapped line starts at he beginning of line number column
 set list                        " Show invisible characters like \n or \t
 set noequalalways               " do not resize other splits after new split is created
@@ -107,11 +111,36 @@ endif
 
 set background=dark
 " Set non text characters to near the same color as Normal ctermbg=234 guibg=#002b36
-hi NonText ctermfg=236 guifg=#103b46
+hi NonText ctermfg=236 guifg=#104b46
 " Set special key (	) to near the same color as Normal ctermbg=234 guibg=#002b36
-hi SpecialKey ctermfg=236 ctermbg=234 guifg=#103b46 guibg=#002b36
+hi SpecialKey ctermfg=236 ctermbg=234 guifg=#104b46 guibg=#002b36
 
 hi SpellBad cterm=underline ctermfg=138
+
+if !has("gui_running")
+  if &term =~ "xterm\\|rxvt"
+    " use an orange cursor in insert mode
+    let &t_SI = "\<Esc>]12;orange\x7"
+    " use a red cursor otherwise
+    let &t_EI = "\<Esc>]12;red\x7"
+    silent !echo -ne "\033]12;red\007"
+    " reset cursor when vim exits
+    autocmd VimLeave * silent !echo -ne "\033]112\007"
+    " use \003]12;gray\007 for gnome-terminal and rxvt up to version 9.21
+  endif
+  "if &term =~ '^xterm\\|rxvt'
+  "  " solid underscore
+  "  let &t_SI .= "\<Esc>[4 q"
+  "  " solid block
+  "  let &t_EI .= "\<Esc>[2 q"
+  "  " 1 or 0 -> blinking block
+  "  " 3 -> blinking underscore
+  "  " Recent versions of xterm (282 or above) also support
+  "  " 5 -> blinking vertical bar
+  "  " 6 -> solid vertical bar
+  "endif
+endif
+
 " ------------------------------------------------------------------
 
 """"""""""""""""""""""
@@ -140,6 +169,9 @@ noremap k gk
 " search will center on the line it's found in.
 nnoremap n nzzzv
 nnoremap N Nzzzv
+" don't jump to next search occurece, if selecting with *
+" nnoremap <silent> * :let @/= '\<' . expand('<cword>') . '\>'<cr>
+
 
 " Act like D and C
 nnoremap Y y$
@@ -266,6 +298,9 @@ function! s:build_go_files()
     call go#cmd#Build(0)
   endif
 endfunction
+
+" Don't use vim-go code completion, deoplete-go is in charge for that.
+let g:go_code_completion_enabled = 0
 " ------------------------------------------------------------------
 
 " ------------------------------------------------------------------
@@ -288,16 +323,21 @@ nmap <F8> :TagbarToggle<CR>
 " ------------------------------------------------------------------
 "  deoplete settings
 " ------------------------------------------------------------------
-let g:deoplete#enable_at_startup = 1
-" Auto select firt word
+" Auto select first word
 set completeopt+=noinsert
+
+let g:deoplete#enable_at_startup = 1
 
 call deoplete#custom#option({
 \ 'smart_case': v:true,
-\ 'auto_complete_delay': 500,
+\ 'auto_complete_delay': 300,
 \ 'min_pattern_length': 3,
-\ 'omni_patterns': { 'go': '[^. *\t]\.\w*' },
 \})
+" Causes number decrease in go files after replace word, use deoplete-go module.
+"\ 'omni_patterns': { 'go': '[^. *\t]\.\w*' },
+" deoplete-go settings
+let g:deoplete#sources#go#gocode_binary = '/home/jezek/.go/bin/gocode-gomod'
+let g:deoplete#sources#go#sort_class = ['package', 'func', 'type', 'var', 'const']
 " ------------------------------------------------------------------
 
 " ------------------------------------------------------------------
@@ -314,12 +354,12 @@ xmap <C-k>     <Plug>(neosnippet_expand_target)
 "\   deoplete#complete_common_string() :
 imap <expr><TAB>
 \   pumvisible() ?
-\     "\<C-y>" :
+\     "<C-y>" :
 \     neosnippet#expandable_or_jumpable() ?
-\       "\<Plug>(neosnippet_expand_or_jump)" : "\<TAB>"
+\       "<Plug>(neosnippet_expand_or_jump)" : "<TAB>"
 
 smap <expr><TAB> neosnippet#expandable_or_jumpable() ?
-\ "\<Plug>(neosnippet_expand_or_jump)" : "\<TAB>"
+\ "<Plug>(neosnippet_expand_or_jump)" : "<TAB>"
 
 " For conceal markers.
 if has('conceal')
