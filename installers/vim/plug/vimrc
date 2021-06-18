@@ -316,6 +316,9 @@ function! s:build_go_files()
   endif
 endfunction
 
+" Hide warnings
+let g:go_version_warning = 0
+
 " Don't use vim-go code completion, deoplete-go is in charge for that.
 let g:go_code_completion_enabled = 0
 " Disable go version warning
