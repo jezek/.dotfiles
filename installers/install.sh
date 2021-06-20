@@ -117,9 +117,36 @@ fi
 	return $r
 }
 
+.isCmd(){
+	type ${1%%"/"*} >/dev/null 2>&1 # command is everything until "/"
+	return $?
+}
+
+.packageManager(){
+	# package manager detect
+	if .isCmd "apt"; then echo "apt"; return
+	elif .isCmd "pacman"; then echo "pacman"; return
+	fi
+	if [ "$debug" = 1 ]; then
+		(>&2 echo -e $cErr"Package manager not detected"$cNone)
+	fi
+	echo "unknown_package_manager"
+	return 1
+}
+
+.packageManagerInstall(){
+local pm=$(.packageManager)
+	case $pm in
+	"apt") echo $pm" install"; return ;;
+	"pacman") echo $pm" -Syu"; return ;;
+	*) echo $pm"_install"; return;;
+esac
+}
+
 # install all packages for commands
 # if command name is not the same as package name, the package name is specified as "cmd/pkg"
 .install(){
+local pmi=$(.packageManagerInstall)
 	local packages=()
 	
 	local cmdPkg
@@ -128,15 +155,10 @@ fi
 		packages+=("${pkg}")
 	done
 	if [ "$debug" = 1 ]; then
-		(>&2 echo -e ".install: installing packages: "$cYellow${packages[*]}$cNone)
+		(>&2 echo -e ".install: installing packages: ${pmi} "$cYellow${packages[*]}$cNone)
 	fi
 
-	.run $SUDO" apt install ${packages[*]}"
-	return $?
-}
-
-.isCmd(){
-	type ${1%%"/"*} >/dev/null 2>&1 # command is everything until "/"
+	.run $SUDO" ${pmi} ${packages[*]}"
 	return $?
 }
 
@@ -288,6 +310,14 @@ fi
 	return
 }
 
+.checkEssentialInstallPrograms() {
+	if ! .needCommand git curl ssh sed date cp mv; then
+		return 1
+	fi
+	return
+}
+
+
 dotfilesDir="$HOME/.dotfiles"
 dotfilesBin="${dotfilesDir}/bin"
 github="https://github.com/"
@@ -298,11 +328,8 @@ if [ $onlyEssential = 1 ]; then
 fi
 # not essentials
 
-if ! .needCommand apt add-apt-repository git curl ssh sed date cp mv; then
+if ! .checkEssentialInstallPrograms; then
 	echo "Essential program are not available: "$missing
-	if [ $onlyEssential = 1 ]; then
-		return 1
-	fi
 	exit 1
 fi
 
@@ -413,9 +440,8 @@ plugins=(\
 	shell/bash shell/zsh/zplug \
 	vim vim/plug \
 	golang \
-	mc audacious chromium \
+	mc audacious \
 	fingerprint \
-	wmctrl \
 	backup)
 
 

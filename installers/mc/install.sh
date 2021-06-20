@@ -16,6 +16,6 @@ mcini="$HOME/.config/mc/ini"
 
 #TODO use helper function with backup like .hardlink
 if [ -f $dotMcini ]; then
-	.run "cp -uvib $dotMcini $mcini"
+	.run "cp -vib $dotMcini $mcini"
 fi
 

@@ -15,8 +15,9 @@ else
 fi
 
 .hardlink "$dotfilesDir/installers/git/gitconfig" "$HOME/.gitconfig"
-.hardlink "$dotfilesDir/installers/git/git-summary/git-summary" "$dotfilesBin/gsum"
-#TODO git-summary needs 'gawk'
-#TODO will be git-summary repo allways downloaded? no need to refresh?
-#TODO! git-summary repo no longer exists... fork some of it's forks
-
+if .needCommand gawk; then
+	.hardlink "$dotfilesDir/installers/git/git-summary/git-summary" "$dotfilesBin/gsum"
+else
+	echo -e $cWarn"git-summary will not be available"$cNone
+fi
+:

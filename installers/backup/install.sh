@@ -68,7 +68,7 @@ sshconn="ssh -t -o ControlPath=$HOME/.ssh/connection_pipe_%h_%p_%r -o ControlMas
 }
 
 defaultRemote="jezek@chicki.sk"
-defaulDestDirectory="/home/jezek/Zálohy/rib/$(id -un)@$(hostname)"
+defaulDestDirectory="/home/jezek/Backups/rib/$(id -un)@$(hostname)"
 
 backupDestDirectory=""
 backupDestRemote=""
@@ -204,7 +204,8 @@ fi
 
 if .check_yes_no "Search for \".cache\" directories in backup source directory and add them into exclude file?"; then
 	# search for ".cache" in source excluding mounted points in excludes
-	if ! .runRes caches "find '${backupSourceDirectory}' -mount -type d \( -not -perm -g+r,u+r,o+r -prune -or -name '*.cache*' -prune -print \)"; then # do not descend to other filesystems, do not descen do dirs, you have not permissions for, print ".cache" dirs and do not descend
+	#if ! .runRes caches "find '${backupSourceDirectory}' -mount -type d \( -not -perm -g+r,u+r,o+r -prune -or -name '*.cache*' -prune -print \)"; then # do not descend to other filesystems, do not descen do dirs, you have not permissions for, print ".cache" dirs and do not descend
+	if ! .runRes caches "find '${backupSourceDirectory}' -mount -type d \( -name '*.cache*' -prune -print \)"; then # do not descend to other filesystems, do not descen do dirs, you have not permissions for, print ".cache" dirs and do not descend
 		printf $cErr"Some errors occured in search"$cNone"\n"
 	fi
 	if [ "$caches" = "" ]; then 

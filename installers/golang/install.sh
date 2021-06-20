@@ -16,7 +16,7 @@ fi
 #TODO upgrade golang version (inpiration: https://github.com/udhos/update-golang
 if ! .isCmd go; then
 	echo -e "${cCmd}go${cNone} not installed"
-	goInstallSources=("latest from golang.org (${goInstallVersion})" "apt install golang gcc" "don't install")
+	goInstallSources=("latest from golang.org (${goInstallVersion})" "install golang via package manager" "don't install")
 	select src in "${goInstallSources[@]}"; do
 		case $src in
 			"${goInstallSources[0]}") 
@@ -24,7 +24,7 @@ if ! .isCmd go; then
 				break
 				;;
 			"${goInstallSources[1]}")
-				.run $SUDO"${goInstallSources[1]}"
+				.install go gcc
 				if ! .isCmd go; then
 					echo -e $cErr"failed"$cNone
 					[ "$1" = plugin ] && return 1
@@ -204,4 +204,4 @@ if [ "$profileChanged" = 1 ]; then
 	read
 fi
 
-.run $SUDO" apt install gcc"
+.install gcc

@@ -27,7 +27,7 @@ if [ -f $dotAudaConfig ]; then
 
 	if [ "$installed" = "1" ]; then
 		#TODO mimeapps.list text replace to .config/mimeapps.list
-		echo "associate audacious with audio files (from ${cFile}$dotfilesDir/audacious/mimeapps.list${cNone} to ${cFile}$HOME/.config/mimeapps.list${cNone}"
+		echo -e "associate audacious with audio files (from ${cFile}$dotfilesDir/audacious/mimeapps.list${cNone} to ${cFile}$HOME/.config/mimeapps.list${cNone}"
 		read
 	fi
 	unset installed

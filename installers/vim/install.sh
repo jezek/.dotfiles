@@ -24,4 +24,12 @@ else
 fi
 
 # register as default editor
-.run "sudo update-alternatives --config editor"
+[ "$(.packageManager)" == "apt" ] && .run "sudo update-alternatives --config editor" || :
+
+profileDir="${dotfilesDir}/shell/profile.d"
+if [ -d $profileDir ]; then
+	linkFile=$profileDir"/vim.sh"
+	if .hardlink "${dotfilesDir}/installers/vim/profile.sh" $linkFile; then
+		echo -e "Vim profile "$cCmd"$(basename ${linkFile})"$cNone" created."
+	fi
+fi
