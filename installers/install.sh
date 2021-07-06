@@ -383,7 +383,7 @@ if [ ! "$res" = 1 ]; then
 			.runRes pubKey "cat $pubKeyFile"
 			res=$?
 			if [ $res = 0 ]; then
-				.run "curl -u \"$githubName\" -X POST -H \"Content-type: application/json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys\""
+				.run "curl -u \"$githubName\" -X POST -H \"Accept: application/vnd.github.v3+json\" -d \"{\\\"title\\\": \\\"$githubKeyTitle\\\",\\\"key\\\": \\\"$pubKey\\\"}\" \"https://api.github.com/user/keys\""
 				res=$?
 				if [ $res = 0 ]; then
 					.run "ssh -qT git@github.com"
@@ -395,6 +395,15 @@ if [ ! "$res" = 1 ]; then
 					fi
 				else
 					echo -e $cErr"Can not set key to gitHub as $githubName"$cNone
+					echo -e "Password auth to github is no longer valid. Generate token via web and press ENTER."
+					read
+					.run "ssh -qT git@github.com"
+					res=$?
+					if [ "$res" = 1 ]; then
+						githubSsh=1
+					else
+						echo -e $cErr"someting failed, github with ssh access not configured"$cNone
+					fi
 				fi
 			else
 				echo -e $cErr"Can not load key from "$cNone$pubKeyFile
