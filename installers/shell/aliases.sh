@@ -1,3 +1,4 @@
+alias sudo='sudo -v; sudo ' # Refresh timeout every time `sudo` is used.
 alias l='ls -aF --group-directories-first'
 alias la='ls -A'
 alias ll='ls -lF --group-directories-first'
@@ -35,7 +36,18 @@ mkdircd () { mkdir -p "$@" && eval cd "\"\$$#\""; }
 alias md=mkdircd
 
 #TODO find this alias a propper place, or check for git command
-alias gsba='git show-branch -a'
+alias gsba='git show-branch -a --color=always | less -X'
+
+#TODO find this alias a propper place, or check for curl command
+# QR code generation
+qr () {
+printf "$@" | curl -F-=\<- qrenco.de
+}
+
+
+#TODO find this alias a propper place, or check for curl command
+# Delete to trash.
+alias rmt='gio trash'
 
 # enable color support of ls and also add handy aliases
 if [ -x /usr/bin/dircolors ]; then
