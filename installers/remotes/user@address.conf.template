@@ -1,0 +1,4 @@
+# Remote configuration variables
+remoteAddress="user@address:/path/to/directory/which/will/be/mounted" # Required.
+remoteMountDir="~/path/to/mount/point" # Required.
+remoteName="name" # Optional. If not filled, defaults to filename without the '.conf' extension.
