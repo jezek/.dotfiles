@@ -13,7 +13,7 @@ if [ ! -d $dotBackupDir ]; then
 		exit 1
 	fi
 else
-	echo -e "Backup allready configured for this user. To reconfigure, delete "$cFile${dotBackupDir}$cNone" and run backup install file again"
+	echo -e "Backup is already configured for this user. To reconfigure, delete "$cFile${dotBackupDir}$cNone" and run backup install file again"
 	[ "$1" = plugin ] && return 0
 	exit 0
 fi
