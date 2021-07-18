@@ -23,14 +23,14 @@ remoteFiles=( $dotRemotesDir"/*.conf" )
 remoteFiles=( ${remoteFiles[@]} )
 #echo ${remoteFiles[@]}
 loadRemote() {
-	unset remoteName remoteMountDir remoteMountStatus remoteAddress
+	unset remoteName remoteMountDir remoteMountStatus remoteAddress remoteAddressPort
 	remoteFile=$1
 	if [ ! -f "${remoteFile}" ]; then
 		#echo -e $cErr"Remote config file does not exist: "$cFile${remoteFile}$cNone
 		return 1
 	fi
 	export $(grep -v '#.*' "${remoteFile}" | xargs)
-	#export -p|grep remote 
+	#export -p|grep remote
 	if [ -z ${remoteName+x} ]; then
 		remoteName=$(basename $remoteFile)
 		remoteName=${remoteName%.conf}
@@ -63,7 +63,11 @@ loadRemote() {
 loadRemoteError() {
 	case $1 in
 		0)
-			echo $remoteName": "$remoteAddress" -> "$remoteMountDir" - "$remoteMountStatus
+			unset port
+			if [ ! -z ${remoteAddressPort+x} ]; then
+				port=" (port: 222)"
+			fi
+			echo $remoteName": "$remoteAddress$port" -> "$remoteMountDir" - "$remoteMountStatus
 			;;
 		1)
 			echo -e $cErr"Remote config file does not exist: "$cFile${remoteFile}$cNone
@@ -80,7 +84,7 @@ loadRemoteError() {
 	esac
 }
 
-if [ -z $1 ]; then 
+if [ -z $1 ]; then
 	for remote in "${remoteFiles[@]}"; do
 		loadRemote "${remote}"
 		loadRemoteError $?
@@ -115,23 +119,27 @@ fi
 
 echo $remoteName": "$remoteAddress" -> "$remoteMountDir" - "$remoteMountStatus
 if [ "$remoteMountStatus" = 0 ]; then
-  echo "Not mounted"
-  echo -n "Mounting ... "
-  if [ ! -d "${remoteMountDir}" ]; then
-  	if ! .run "mkdir -p ${remoteMountDir}"; then
-  		echo -e $cErr"Error creating mount directory: "$cFile${remoteMountDir}$cNone
-  		exit 3
+	echo "Not mounted"
+	echo "Mounting ... "
+	if [ ! -d "${remoteMountDir}" ]; then
+		if ! .run "mkdir -p ${remoteMountDir}"; then
+			echo -e $cErr"Error creating mount directory: "$cFile${remoteMountDir}$cNone
+			exit 3
 		fi
 	fi
-  sshfs $remoteAddress $remoteMountDir -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3 && echo -e $cGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 4; }
+	unset port
+	if [ ! -z ${remoteAddressPort+x} ]; then
+		port=" -p 222"
+	fi
+	.run "sshfs $remoteAddress$port $remoteMountDir -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3" && echo -e $cGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 4; }
 elif [ "$remoteMountStatus" = 1 ]; then
-  echo "Allready mounted"
+	echo "Allready mounted"
 	if .check_yes_no "Unmount?" n ; then
-		echo -n "Unmountng ... "
-		fusermount -u $remoteMountDir && echo -e $cGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 5; }
+		echo "Unmountng ... "
+		.run "fusermount -u $remoteMountDir" && echo -e $cGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 5; }
 
 	fi
 else
-  echo "Something else is already mounted on: "$cFile${remoteMountDir}$cNone
-  exit 6
+	echo "Something else is already mounted on: "$cFile${remoteMountDir}$cNone
+	exit 6
 fi
