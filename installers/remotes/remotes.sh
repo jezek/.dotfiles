@@ -131,12 +131,12 @@ if [ "$remoteMountStatus" = 0 ]; then
 	if [ ! -z ${remoteAddressPort+x} ]; then
 		port=" -p 222"
 	fi
-	.run "sshfs $remoteAddress$port $remoteMountDir -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3" && echo -e $cGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 4; }
+	.run "sshfs $remoteAddress$port $remoteMountDir -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3" && echo -e $cLightGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 4; }
 elif [ "$remoteMountStatus" = 1 ]; then
 	echo "Allready mounted"
 	if .check_yes_no "Unmount?" n ; then
 		echo "Unmountng ... "
-		.run "fusermount -u $remoteMountDir" && echo -e $cGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 5; }
+		.run "fusermount -u $remoteMountDir" && echo -e $cLightGreen"[OK]"$cNone || { echo -e $cErr"[FAIL]"$cNone; exit 5; }
 
 	fi
 else

@@ -168,7 +168,7 @@ if [ ${#profileEtc[@]} -ne 0 ]; then
 	.toLines "${profileEtc[@]}" | ${goSudo} tee ${profileEtcFile} >/dev/null
 	res=$?
 	if [ $res = 0 ]; then
-		echo -e $cGreen"ok"$cNone
+		echo -e $cLightGreen"ok"$cNone
 	else
 		echo -e $cErr"failed!"$cNone
 	fi
@@ -185,7 +185,7 @@ if [ ${#profileHome[@]} -ne 0 ]; then
 	.toLines "${profileHome[@]}" | tee ${profileHomeFile}
 	res=$?
 	if [ $res = 0 ]; then
-		echo -e $cGreen"ok"$cNone
+		echo -e $cLightGreen"ok"$cNone
 	else
 		echo -e $cErr"failed!"$cNone
 	fi

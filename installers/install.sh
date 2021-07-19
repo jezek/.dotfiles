@@ -12,10 +12,11 @@
 cNone='\e[0m'
 # named colors
 cRed='\e[91m'
-cGreen='\e[92m'
+cGreen='\e[32m'
 cYellow='\e[93m' # results
 cBlue='\e[94m'
 cMagenta='\e[95m'
+cLightGreen='\e[92m'
 # layout colors
 cErr=$cRed
 cWarn=$cRed
