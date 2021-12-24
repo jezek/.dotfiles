@@ -5,7 +5,7 @@ fi
 
 .needCommand xinput grep
 
-.runRes touchIds "xinput list | grep 'Finger touch' | grep -oP '(?<=id=)\d+'"
+.runRes touchIds "xinput list | grep -iP 'finger touch|elan9008:00 04f3:2bb1\\s*id' | grep -oP '(?<=id=)\d+'"
 res=$?
 touchIds=($touchIds)
 if [ $res -ne 0 ] || [ ${#touchIds[@]} = 0 ]; then
