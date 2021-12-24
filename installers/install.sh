@@ -1,7 +1,12 @@
-#! /bin/bash
+#!/bin/bash
+#set -euo pipefail
+#IFS=$'\n\t' 
+# From: https://dwheeler.com/essays/filenames-in-shell.html
+#TODO Use recommendations from link above.
+
 #TODO make installer to be used in onliner with curl in any current directory
 
-#TODO instller errors on fp2
+#TODO installer errors on fp2
 # git-summary not found
 # vim_undo_clean.sh no found 
 # fingerprint - lsusb not found
