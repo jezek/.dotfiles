@@ -1,0 +1,1 @@
+sudo bash -c 'grep -q "ELAN9008:00 04F3:2BB1 UNKNOWN" /proc/bus/input/devices && echo "0018:04F3:2BB1.0001" > /sys/bus/hid/drivers/hid-multitouch/unbind || echo "0018:04F3:2BB1.0001" > /sys/bus/hid/drivers/hid-multitouch/bind' # finger touchscreen toggle
