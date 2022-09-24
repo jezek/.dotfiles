@@ -476,7 +476,8 @@ plugins=(\
 	golang \
 	mc audacious \
 	fingerprint \
-	backup)
+	backup \
+	wallpaper-changer)
 
 
 
