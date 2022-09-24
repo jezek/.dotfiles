@@ -76,11 +76,12 @@ set so=5                        " Set 5 lines to the curors - when moving vertic
 set wrap                        " Wrap lines
 set linebreak                   " Don't wrap lines in middle of a word
 set breakindent                 " Indent line breaks (wrapped lines)
-let &showbreak = '›››'           " Mark breaks
+let &showbreak = '›››'          " Mark breaks
 set cpo=n                       " Wrapped line starts at he beginning of line number column
 set list                        " Show invisible characters like \n or \t
 set noequalalways               " do not resize other splits after new split is created
 set go-=T                       " do not show toolbar in gvim
+set nrformats+=alpha            " Increase/decrease also letters (not only numbers) with <C-a/x>
 
 " Enable to copy to clipboard for operations like yank, delete, change and put
 " http://stackoverflow.com/questions/20186975/vim-mac-how-to-copy-to-clipboard-without-pbcopy
@@ -207,7 +208,10 @@ map ; :
 nnoremap <leader>va ggVG
 
 " use <Tab> as macro executor @
-nmap <Tab> q
+nmap <Tab> @
+
+" jump to the end of the line with -
+nmap - $
 
 """""""""""""""""""""
 "      Plugins      "
