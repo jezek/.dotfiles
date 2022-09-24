@@ -1,0 +1,10 @@
+[Unit]
+Description=Run wallpaper-changer every 15 minutes
+
+[Timer]
+OnActiveSec=0min
+OnUnitActiveSec=15min
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target
