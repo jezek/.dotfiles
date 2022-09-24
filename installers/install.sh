@@ -25,6 +25,7 @@ cLightGreen='\e[92m'
 # layout colors
 cErr=$cRed
 cWarn=$cRed
+cOk=$cLightGreen
 cCmd=$cGreen
 cPkg=$cBlue
 cFile=$cMagenta
@@ -316,6 +317,24 @@ local pmi=$(.packageManagerInstall)
 	return
 }
 
+# Prints the name of current Desktop Enviroment detected from environment variables.
+# Detects/prints "gnome", "kde", "xfce".
+# Otherwise prints "unknown" 
+.getDE() {
+	local desktop="unknown"
+	if [ "$XDG_CURRENT_DESKTOP" = "" ]
+	then
+		desktop=$(echo "$XDG_DATA_DIRS" | sed 's/.*\(xfce\|kde\|gnome\).*/\1/')
+	else
+		desktop=$(echo "$XDG_CURRENT_DESKTOP" | sed 's/.*\(xfce\|kde\|gnome\).*/\1/')
+	fi
+
+	desktop=${desktop,,}  # convert to lower case
+	desktop=$(echo "${desktop}" | sed 's/.*\(xfce\|kde\|gnome\).*/\1/')
+	echo "$desktop"
+	return
+}
+
 .checkEssentialInstallPrograms() {
 	if ! .needCommand git curl ssh sed date cp mv; then
 		return 1
@@ -457,7 +476,8 @@ plugins=(\
 	golang \
 	mc audacious \
 	fingerprint \
-	backup)
+	backup \
+	wallpaper-changer)
 
 
 
