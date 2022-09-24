@@ -221,7 +221,7 @@ local pmi=$(.packageManagerInstall)
 
 		if [ -f "$target" ]; then # target exists
 			if .check_yes_no "File "$cFile${target}$cNone" allready exists. Overwrite with "$cFile${source}$cNone"?"; then
-				if .check_yes_no "Backup "$cFile${target}$cNone"?"; then
+				if ! .run "cmp -s $source $target" && .check_yes_no "Backup "$cFile${target}$cNone"?"; then
 					if ! .backup "$target"; then
 						if ! .check_yes_no "Backup failed. Link files anyway?"; then
 							(>&2 echo -e $cErr"Hardlinking error: user decided not to link file "$cFile"${source}"$cErr" to "$cFile"${target}"$cErr"."$cNone)
