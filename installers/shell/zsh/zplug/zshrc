@@ -4,7 +4,7 @@ zplug 'zplug/zplug', hook-build:'zplug --self-manage'
 
 zplug "zsh-users/zsh-syntax-highlighting", defer:2
 zplug "zsh-users/zsh-history-substring-search", defer:2
-zplug "psprint/history-search-multi-word", defer:2
+zplug "zdharma-continuum/history-search-multi-word", defer:2
 
 zplug "robbyrussell/oh-my-zsh", use:"lib/*.zsh"
 zplug "plugins/git",   from:oh-my-zsh
