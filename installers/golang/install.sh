@@ -6,7 +6,8 @@ fi
 .needCommand select case while uname awk ls tar tee chown mkdir
 
 # Get latest golang version from net
-.runRes goInstallVersion "curl https://golang.org/dl/ 2>/dev/null | grep -oP 'go\d+(\.\d+(\.\d+)?)?\s' | sort -V --reverse | head -1 | sed -e 's/\s\+$//'"
+
+.runRes goInstallVersion "curl https://go.dev/dl/ 2>/dev/null | grep -oP 'go\d+(\.\d+(\.\d+)?)?\s' | sort -V --reverse | head -1 | sed -e 's/\s\+$//'"
 if [ -z "$goInstallVersion" ]; then
 	echo -e $cErr"fetching latest golang version failed"$cNone
 	[ "$1" = plugin ] && return 1
