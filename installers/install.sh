@@ -477,7 +477,8 @@ plugins=(\
 	mc audacious \
 	fingerprint \
 	backup \
-	wallpaper-changer)
+	wallpaper-changer \
+)
 
 
 

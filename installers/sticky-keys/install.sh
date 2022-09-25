@@ -3,6 +3,11 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
+if [ "wayland" = "${XDG_SESSION_TYPE}" ]; then
+	1>&2 echo -e $cErr"Sticky keys"$cNone" via xkbset doesn't work on wayland"
+	[ "$1" = plugin ] && return 1 || exit 1
+fi
+
 if ! .check_yes_no "Install sticky key support?"; then
 	[ "$1" = plugin ] && return
 	exit 0
