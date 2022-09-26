@@ -34,6 +34,8 @@ if [ ! -f $dotWallpaperChangerConfigFile ]; then
 fi
 
 systemdUserDir=$HOME"/.config/systemd/user"
+[ ! -d "${systemdUserDir}" ] && .run "mkdir -p ${systemdUserDir}"
+
 timerFileName="wallpaper-changer.timer"
 serviceFileName="wallpaper-changer.service"
 
@@ -55,7 +57,7 @@ fi
 if .runRes enabled "systemctl --user is-enabled wallpaper-changer.timer"; then
 	if [ "enabled" = "${enabled}" ]; then
 		.runRes active "systemctl --user is-active wallpaper-changer.timer"
-		if [ "active" = "${active}" ]; then 
+		if [ "active" = "${active}" ]; then
 			echo -e $cOk"Wallpaper changer timer"$cNone" already configured"
 			[ "$1" = plugin ] && return 0 || exit 0
 		fi
