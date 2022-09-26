@@ -3,3 +3,5 @@
 	name = jEzEk
 [push]
 	default = simple
+[url "git@bitbucket.org:"]
+	insteadOf = https://bitbucket.org/
