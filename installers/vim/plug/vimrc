@@ -7,6 +7,7 @@ Plug 'fatih/vim-go', { 'for': 'go' }
 " Plug 'Yggdroot/LeaderF'
 Plug 'majutsushi/tagbar'
 Plug 'AndrewRadev/splitjoin.vim'
+"TODO try https://ycm-core.github.io/YouCompleteMe/
 Plug 'Shougo/deoplete.nvim' | Plug 'roxma/nvim-yarp' | Plug 'roxma/vim-hug-neovim-rpc'
 Plug 'deoplete-plugins/deoplete-go', { 'do': 'make' }
 Plug 'Shougo/neosnippet' | Plug 'Shougo/neosnippet-snippets'
@@ -22,6 +23,7 @@ Plug 'vim-scripts/indentpython.vim'
 Plug 'nvie/vim-flake8'
 " https://github.com/simeji/winresizer
 " https://github.com/moll/vim-bbye
+"TODO try https://github.com/tpope/vim-surround
 call plug#end()
 
 """"""""""""""""""""""
@@ -74,6 +76,8 @@ set ruler                       " Always show current position
 set spell                       " Always use spell check
 set so=5                        " Set 5 lines to the curors - when moving vertical
 set wrap                        " Wrap lines
+set display=lastline            " Show last line of long wrapped text
+set smoothscroll                " Scrolling works with screen lines
 set linebreak                   " Don't wrap lines in middle of a word
 set breakindent                 " Indent line breaks (wrapped lines)
 let &showbreak = '›››'          " Mark breaks
@@ -121,11 +125,11 @@ hi SpellBad cterm=underline ctermfg=138
 
 if !has("gui_running")
   if &term =~ "xterm\\|rxvt"
-    " use an orange cursor in insert mode
-    let &t_SI = "\<Esc>]12;orange\x7"
-    " use a red cursor otherwise
-    let &t_EI = "\<Esc>]12;red\x7"
-    silent !echo -ne "\033]12;red\007"
+    " use a red cursor in insert mode
+    let &t_SI = "\<Esc>]12;red\x7"
+    " use a gray cursor otherwise
+    let &t_EI = "\<Esc>]12;gray\x7"
+    silent !echo -ne "\033]12;gray\007"
     " reset cursor when vim exits
     autocmd VimLeave * silent !echo -ne "\033]112\007"
     " use \003]12;gray\007 for gnome-terminal and rxvt up to version 9.21
@@ -396,3 +400,6 @@ nmap <leader>e :Errors<cr>
 
 " unmap command <c-r><c-g>, cause it's causing problems in gvim (on command line <c-r>% not working).
 "cunmap <C-R><C-G>
+
+" gui font settings
+set guifont=Source\ Code\ Pro\ 10
