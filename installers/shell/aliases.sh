@@ -60,3 +60,7 @@ if [ -x /usr/bin/dircolors ]; then
     alias fgrep='fgrep --color=auto'
     alias egrep='egrep --color=auto'
 fi
+
+# From https://blog.depau.eu/2021/07/19/btrfs-troubleshooting/
+alias cp='cp --reflink=auto'
+# "auto" will fallback to standard copying if reflink isn't available
