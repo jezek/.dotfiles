@@ -39,10 +39,6 @@ echo Setting picture as wallpaper: $picToUse
 # Create or update link to current wallpaper in dotfiles wallpaper-changer directory.
 [ -d "${dotWallpaperChangerDir}" ] && .run "ln -sf \"${picToUse}\" ${dotWallpaperChangerDir}/current-wallpaper.link"
 
-# Set the background primary color to black.
-#gsettings set org.gnome.desktop.background primary-color "#000000"
-# Set the background secondary color to black.
-#gsettings set org.gnome.desktop.background secondary-color "#000000"
 # Set the background image options to "centered".
 #gsettings set org.gnome.desktop.background picture-options centered
 
@@ -51,8 +47,16 @@ gsettings set org.gnome.desktop.background picture-uri file://"$picToUse"
 # Set the background image for dark/night mode.
 gsettings set org.gnome.desktop.background picture-uri-dark file://"$picToUse"
 
-
 # Get picture dominant color.
 dominantColor=$($dotWallpaperChangerInstallDir"/dcolors.sh" -k 1 -f hex "${picToUse}")
 echo "Setting dash-to-dock background-color to picture's dominant color: "${dominantColor}
 gsettings set org.gnome.shell.extensions.dash-to-dock background-color "${dominantColor}"
+
+# Darken dominant color if needed.
+darkenediDominantColor=$($dotWallpaperChangerInstallDir"/darken.sh" 20 "${dominantColor}")
+echo "Darkened dominat color: $darkenediDominantColor"
+
+# Set the background primary color to black.
+gsettings set org.gnome.desktop.background primary-color "#000000"
+# Set the background secondary color to darkenediDominantColor.
+gsettings set org.gnome.desktop.background secondary-color "${darkenediDominantColor}"
