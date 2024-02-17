@@ -16,20 +16,32 @@
 # colors
 cNone='\e[0m'
 # named colors
-cRed='\e[91m'
+cBlack='\e[30m'
+cRed='\e[31m'
 cGreen='\e[32m'
-cYellow='\e[93m' # results
-cBlue='\e[94m'
-cMagenta='\e[95m'
+cYellow='\e[33m'
+cBlue='\e[34m'
+cMagenta='\e[35m'
+cCyan='\e[36m'
+cLightGray='\e[37m'
+cDarkGray='\e[90m'
+cLightRed='\e[91m'
 cLightGreen='\e[92m'
+cLightYellow='\e[93m'
+cLightBlue='\e[94m'
+cLightMagenta='\e[95m'
+cLightCyan='\e[96m'
+cWhite='\e[97m'
+
 # layout colors
 cErr=$cRed
 cWarn=$cRed
 cOk=$cLightGreen
-cCmd=$cGreen
+cRun=$cGreen
+cCmd=$cYellow
 cPkg=$cBlue
 cFile=$cMagenta
-cInput=$cYellow
+cInput=$cLightYellow
 
 # debug=0
 onlyEssential=0
@@ -96,7 +108,7 @@ fi
 		(>&2 echo -e $cErr".run: need 1 argument, got $#: "$cNone$@)
 		return 255
 	fi
-	(>&2 echo -e $cCmd$1$cNone)
+	(>&2 echo -e $cRun$1$cNone)
 	eval $1
 	local res=$?
 	if [ "$debug" = 1 ]; then

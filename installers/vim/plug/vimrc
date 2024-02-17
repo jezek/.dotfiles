@@ -116,6 +116,7 @@ if $TERM == "xterm-256color" || $TERM == "screen-256color" || $COLORTERM == "gno
 endif
 
 set background=dark
+hi Normal ctermbg=none
 " Set non text characters to near the same color as Normal ctermbg=234 guibg=#002b36
 hi NonText ctermfg=236 guifg=#104b46
 " Set special key (	) to near the same color as Normal ctermbg=234 guibg=#002b36
