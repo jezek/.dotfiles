@@ -33,7 +33,7 @@ if [ ! -f $dotWallpaperChangerConfigFile ]; then
 	read
 fi
 
-if ! .needCommand imagemagick; then
+if ! .needCommand convert/imagemagick; then
 	[ "$1" = plugin ] && return 1 || exit 1
 fi
 
