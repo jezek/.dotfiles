@@ -33,6 +33,10 @@ if [ ! -f $dotWallpaperChangerConfigFile ]; then
 	read
 fi
 
+if ! .needCommand imagemagick; then
+	[ "$1" = plugin ] && return 1 || exit 1
+fi
+
 systemdUserDir=$HOME"/.config/systemd/user"
 [ ! -d "${systemdUserDir}" ] && .run "mkdir -p ${systemdUserDir}"
 
