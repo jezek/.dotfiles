@@ -497,6 +497,7 @@ plugins=(\
 for plugin in "${plugins[@]}"; do
 	pluginInstallFile="$dotfilesDir/installers/$plugin/install.sh"
 	if [ -f $pluginInstallFile ]; then
+		echo -e $cBlue"Installing plugin: ${cFile}${plugin}"$cNone
 		source $pluginInstallFile plugin
 	fi
 done;
