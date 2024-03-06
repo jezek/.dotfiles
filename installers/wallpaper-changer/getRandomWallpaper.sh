@@ -18,7 +18,7 @@ images=()
 while IFS= read -r -d $'\0'
 do
 	images+=("${REPLY}")
-done < <(find "${dirs[@]}" \( -name \*.jpg -or -name \*.jpeg -or -name \*.gif -or -name \*.png \) -print0)
+done < <(find "${dirs[@]}" \( -name \*.jpg -or -name \*.jpeg -or -name \*.gif -or -name \*.png -or -name \*.webp \) -print0)
 
 element_count=${#images[*]}
 # echo "choosing from ${element_count} images"
