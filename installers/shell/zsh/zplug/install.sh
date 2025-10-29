@@ -28,6 +28,8 @@ if [ ! -d $zplugDir ]; then
 	exit 0
 fi
 
+.installPkg kitty-terminfo
+
 if [ ! -d "$dotfilesDir/shell/profile.d" ]; then
 	.run "mkdir -p '$dotfilesDir/shell/profile.d'"
 fi

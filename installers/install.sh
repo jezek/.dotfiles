@@ -181,6 +181,36 @@ local pmi=$(.packageManagerInstall)
 	return $?
 }
 
+.installPkg() {
+	local pm=$(.packageManager)
+	local toInstall=()
+	local cmdPkg pkg
+	for cmdPkg in "$@"; do
+		pkg=${cmdPkg#*/}
+		case "$pm" in
+			apt)
+				if apt list --installed "$pkg" 2>/dev/null | grep -q "\[installed\]"; then
+					echo -e "Skipping already installed package ${cPkg}${pkg}${cNone}"
+					continue
+				fi
+				;;
+			pacman)
+				if pacman -Q "$pkg" >/dev/null 2>&1; then
+					echo -e "Skipping already installed package ${cPkg}${pkg}${cNone}"
+					continue
+				fi
+				;;
+		esac
+		toInstall+=("$cmdPkg")
+	done
+
+	if [ ${#toInstall[@]} -eq 0 ]; then
+		return 0
+	fi
+
+	.install "${toInstall[@]}"
+}
+
 .installedPpa() {
  .run "find /etc/apt/ -name '*.list' -print0 | xargs -0 grep -ho '^deb http://ppa.launchpad.net/[a-z0-9\\-]\\+/[a-z0-9\\-]\\+'"
 }
@@ -501,4 +531,3 @@ for plugin in "${plugins[@]}"; do
 		source $pluginInstallFile plugin
 	fi
 done;
-
