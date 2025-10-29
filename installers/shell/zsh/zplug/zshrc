@@ -31,5 +31,14 @@ if [ -f ~/.zsh_aliases ]; then
     . ~/.zsh_aliases
 fi
 
+# Add history search to ctrl+/
+if zplug check zdharma-continuum/history-search-multi-word; then
+	bindkey "^_" history-search-multi-word
+fi
+
 # so as not to be disturbed by Ctrl-S ctrl-Q in terminals:
 stty -ixon
+
+# Change color of comments to make them visible ob black transparent background
+typeset -A ZSH_HIGHLIGHT_STYLES
+ZSH_HIGHLIGHT_STYLES[comment]='fg=#545652'

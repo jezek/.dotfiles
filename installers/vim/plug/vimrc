@@ -29,6 +29,8 @@ call plug#end()
 """"""""""""""""""""""
 "      Settings      "
 """"""""""""""""""""""
+winpos 200 100
+set guioptions -=m              " Hide menu bar in gvim
 set nocompatible                " Enables us Vim specific features
 set modelines=0                 " dont need modelines and the potential security hazard
 filetype off                    " Reset filetype detection first ...
@@ -86,6 +88,7 @@ set list                        " Show invisible characters like \n or \t
 set noequalalways               " do not resize other splits after new split is created
 set go-=T                       " do not show toolbar in gvim
 set nrformats+=alpha            " Increase/decrease also letters (not only numbers) with <C-a/x>
+set history=1000                " Increase command history (default: 50)
 
 " Enable to copy to clipboard for operations like yank, delete, change and put
 " http://stackoverflow.com/questions/20186975/vim-mac-how-to-copy-to-clipboard-without-pbcopy
@@ -211,6 +214,7 @@ map ; :
 
 " select all shortcut
 nnoremap <leader>va ggVG
+nnoremap <leader>/g /[><=]\\{7}<CR>
 
 " use <Tab> as macro executor @
 nmap <Tab> @
