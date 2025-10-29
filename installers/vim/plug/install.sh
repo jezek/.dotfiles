@@ -33,6 +33,7 @@ if [ "$installed" = "1" ]; then
 	.run "vim +PlugInstall +qall"
 fi
 
+# TODO first try package manager python3-pynvim, then pipx and not pip3
 if ! .isCmd pip3; then
 	echo -e $cWarn"Using deoplete in vim requires pyvim package."$cNone" To install, first install "$cCmd"pip3"$cNone" and run:"
 	echo -e "pip3 install --user pynvim"
