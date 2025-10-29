@@ -30,7 +30,7 @@ call plug#end()
 "      Settings      "
 """"""""""""""""""""""
 winpos 200 100
-set guioptions -=m              " Hide menu bar in gvim
+set guioptions-=m               " Hide menu bar in gvim
 set nocompatible                " Enables us Vim specific features
 set modelines=0                 " dont need modelines and the potential security hazard
 filetype off                    " Reset filetype detection first ...
