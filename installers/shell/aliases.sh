@@ -36,7 +36,7 @@ mkdircd () { mkdir -p "$@" && eval cd "\"\$$#\""; }
 alias md=mkdircd
 
 #TODO find this alias a propper place, or check for git command
-alias gsba='git show-branch -a --color=always | less -X'
+alias gsba='git show-branch -a --color=always | less -r -X'
 
 #TODO find this alias a propper place, or check for curl command
 # QR code generation
