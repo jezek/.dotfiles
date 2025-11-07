@@ -1,0 +1,361 @@
+// =============================================================================
+//
+// Waybar configuration
+//
+// Configuration reference: https://github.com/Alexays/Waybar/wiki/Configuration
+//
+// =============================================================================
+
+{
+    // -------------------------------------------------------------------------
+    // Global configuration
+    // -------------------------------------------------------------------------
+    // "layer": "top", // Waybar at top layer
+    "layer": "bottom",
+    // "position": "bottom", // Waybar position (top|bottom|left|right)
+    // "height": 30, // Waybar height (to be removed for auto height)
+    "height": 30,
+    // "width": 1280, // Waybar width
+
+    "modules-left": [
+    "clock",
+    "sway/mode"
+    ],
+
+    "modules-center": [
+    "cpu",
+    "memory",
+    "temperature#cpu",
+    "disk",
+    "backlight",
+    "custom/lang",
+    "pulseaudio",
+    // "custom/net-icon",
+    "network",
+    //"custom/bluetooth-icon",
+    "bluetooth",
+    "battery"
+    // "custom/battery"
+    ],
+
+    "modules-right": [
+    "sway/workspaces"
+    //"custom/terminal",
+    //"custom/filemanager",
+    //"custom/browser",
+    //"custom/libre",
+    //"custom/mmfm",
+    //"custom/vmp",
+    //"custom/printer",
+    //// "idle_inhibitor",
+    //"custom/gap",
+
+    //"custom/software",
+    //"custom/apps",
+    //"custom/overview",
+    //"custom/settings"
+    ],
+
+    "clock": {
+        // "interval": 60,
+        "timezone": "Europe/Bratislava",
+        "format": "{:%a %Y-%m-%d %H:%M}",
+        // "format-alt": " {:%Y-%m-%d} ",
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
+    },
+    
+    "sway/workspaces": {
+    "persistent_workspaces": {
+        "1": [],
+        "2": [],
+        "3": [],
+        "4": [],
+        "5": [],
+        "6": [],
+        "7": [],
+        "8": [],
+        "9": []
+    },
+    "all-outputs": true
+    },
+
+    "custom/terminal": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec foot",
+    },
+    "custom/filemanager": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec 'nautilus --new-window'",
+    },
+    "custom/browser": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec 'chromium --ozone-platform-hint=auto'",
+    },
+    "custom/libre": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec libreoffice",
+    },
+    "custom/mmfm": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec mmfm",
+    },
+    "custom/vmp": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec vmp",
+    },
+    "custom/printer": {
+        "format": "   ",
+        "interval": "once",
+        "on-click": "swaymsg exec system-config-printer",
+    },
+    "custom/software": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec QT_QPA_PLATFORM=xcb appstore",
+    },
+    "custom/apps": {
+        "tooltip-format": "desktop",
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec 'wofi --show run'",
+    },
+    "custom/overview": {
+        "format": "  ",
+        "interval": "once",
+        "on-click": "swaymsg exec 'echo 2 > /tmp/sov'",
+    },
+    "custom/settings": {
+        "tooltip-format": "shutdown/logout",
+        "format": "   ",
+        "interval": "once",
+        "on-click": "swaymsg exec 'echo 2 > /tmp/wcp'",
+    },
+    "sway/language": {
+    	"format": "{short} {variant}",
+    },
+    "sway/mode": {
+        "format": "<span style=\"italic\">{}</span>"
+    },
+    "sway/window":{
+	"max-length":50
+    },
+    "idle_inhibitor": {
+        //"format": "idle | ",
+        "format": "{icon}",
+        "format-icons": {
+            "activated": "",
+            "deactivated": ""
+        }
+    },
+    "tray": {
+        "icon-size": 8,
+        "spacing": 20
+    },
+   "custom/cpu-icon": {
+        "format": "<span font_family='Font Awesome 6' size='x-large'></span>",
+        "interval": "once",
+    },
+    "cpu": {
+        "interval": 5,
+        "format": "<span size='xx-small'> </span>{usage:02d}%",
+        "format-alt": "<span size='xx-small'> </span>{load:02d}",
+        "states": {
+            "warning": 70,
+            "critical": 90
+        },
+        // "on-click": "swaymsg exec \"\\$term_float_landscape \\$cpu_mon\"",
+        "tooltip": true
+    },
+   "custom/mem-icon": {
+        "format": "<span font_family='Font Awesome 6' size='x-large'></span>",
+        "interval": "once",
+    },
+    "memory": {
+        "interval": 20,
+        "format": "<span size='xx-small'> </span>{percentage:02d}%",
+        // "format": " mem:{avail:0.1f}G ",
+        "format-full": "format-<states> not working",
+        "format-alt": "<span size='xx-small'> </span>{used:2.1f}G/{total:2.1f}G",
+        "states": {
+            "full": 100000
+        },
+        // "on-click": "swaymsg exec \"\\$term_float_landscape \\$mem_mon\"",
+        "tooltip-format": "free:{avail:0.1f}G"
+    },
+    "temperature#cpu": {
+        "interval": 20,
+        "thermal-zone": 0,
+        "critical-threshold": 80,
+        "format": "{icon}",
+        "format-alt": "{icon}<span size='xx-small'> </span>{temperatureC:02d}°C",
+        "format-critical": "{icon}<span size='xx-small'> </span>{temperatureC:02d}°C",
+        "format-icons": [""]
+    },
+   "custom/disc-icon": {
+        "format": "<span font_family='Font Awesome 6' size='xx-large'></span>",
+        "interval": "once",
+    },
+    "disk":{
+        "interval": 60,
+        "format":"<span size='xx-small'> </span>{free}"
+    },
+   "custom/light-icon": {
+        "format": "<span font_family='Font Awesome 6' size='medium'></span>",
+        "interval": "once",
+    },
+    "backlight": {
+        "interval": 60,
+        // "format": " lcd:{percent}% ",
+        "format-alt": "{icon}",
+        "format": "{icon}<span size='xx-small'> </span>{percent}%",
+        "on-scroll-up" : "brightnessctl s 10%+",
+        "on-scroll-down" : "brightnessctl -n1 s 10%-",
+        // "on-scroll-up": "light -A 10",
+        // "on-scroll-down": "light -U 10",
+        // "format-icons": ["", ""]
+        "format-icons": ["", ""]
+    },
+    "pulseaudio": {
+        // "scroll-step": 1, // %, can be a float
+        "format": "{icon}<span size='xx-small'> </span>{volume}% {format_source}",
+        "format-bluetooth": " {icon}<span size='xx-small'> </span>{volume}% {format_source}",
+        "format-bluetooth-muted": " {icon} {format_source}",
+        "format-muted": "{icon} {format_source}",
+        "format-source": "<span size='xx-small'> </span>{volume}%",
+        // "format": " vol:{volume}% ",
+        // "format-bluetooth": " vol:{volume}% ",
+        // "format-bluetooth-muted": " {icon}  ",
+        // "format-muted": " {format_source}  ",
+        // "format-source": "{volume}%   ",
+        "format-source-muted": "",
+        "format-icons": {
+            "headphone": "",
+            "hands-free": "",
+            "headset": "",
+            "phone": "",
+            "portable": "",
+            "car": "",
+            "default": ["", "", ""]
+        },
+        // "on-click": "swaymsg exec \\$pulseaudio"
+        "on-click": "pavucontrol"
+    },
+   "custom/batt-icon": {
+        "format": "<span font_family='Font Awesome 6' size='xx-large'></span>",
+        "interval": "once",
+    },
+    //"battery": {
+    //    "states": {
+    //        // "good": 95,
+    //        "warning": 30,
+    //        "critical": 15
+    //    },
+    //    "format": " bat:{capacity}% ",
+    //    "format-charging": " bat:{capacity}% ",
+    //    "format-plugged": " bat:{capacity}% ",
+    //    "format-alt": " bat:{time} ",
+    //    "format-icons": ["", "", "", "", ""]
+    //},
+    "battery": {
+        //"bat": "axp20x-battery",
+        "interval": 10,
+        "states": {
+            "warning": 20,
+            "critical": 8
+        },
+        "format": "{icon}",
+        "format-alt": "{icon}<span size='xx-small'> </span>{capacity:2d}%",
+        "format-warning": "{icon}<span size='xx-small'> </span>{capacity:2d}%",
+        "format-critical": "{icon}<span size='xx-small'> </span>{capacity:2d}%",
+        "format-icons": [
+            "", // Icon: battery-empty
+            "", // Icon: battery-quarter
+            "", // Icon: battery-half
+            "", // Icon: battery-three-quarters
+            ""  // Icon: battery-full
+        ],
+        "format-charging": "{icon}<span size='xx-small'> </span>{capacity}%", // Icon: bolt
+        "tooltip": true
+    },
+    "custom/battery": {
+      "return-type": "json",
+      "exec": "source /sys/class/power_supply/axp20x-battery/uevent && [ \"$POWER_SUPPLY_CAPACITY\" -le \"65\" ] && TEXT=$POWER_SUPPLY_CAPACITY'%' || TEXT='' && echo '{\"text\": \"'$TEXT'\", \"tooltip\": \"'$POWER_SUPPLY_CAPACITY'% ('$POWER_SUPPLY_STATUS')\", \"class\": \"'$POWER_SUPPLY_STATUS'\" , \"percentage\": '$POWER_SUPPLY_CAPACITY' }'",
+      "format": "{icon}<small><small><sup>{}</sup></small></small>",
+      "format-icons": ["", "", "", "", ""],
+      "interval": 10
+    },
+    "battery#bat2": {
+        "bat": "BAT2"
+    },
+   "custom/net-icon": {
+        // "format": "  <span font_family='Font Awesome 6' size='xx-large'></span> ",
+        "format": "",
+        "interval": "once",
+        // "on-click": "iwgtk"
+        "on-click": "nmtui-connect"
+    },
+    "network": {
+        "format-wifi": "",
+        "format-ethernet": "🖧",
+        "format-linked": " {ifname} (No IP) ",
+        "format-disconnected": "⮿",
+        // "on-click": "iwgtk"
+        "on-click": "swaymsg exec 'foot --title=nmtui-connect -e nmtui-connect'"
+    },
+   "custom/bluetooth-icon": {
+        "format": "",
+        "interval": "once",
+        // "on-click": "iwgtk"
+        "on-click": "blueman-manager"
+    },
+
+    "bluetooth": {
+        "format": " {status}",
+        "format-connected": " {device_alias}",
+        "format-connected-battery": " {device_alias} {device_battery_percentage}%",
+        // "format-device-preference": [ "device1", "device2" ], // preference list deciding the displayed device
+        "tooltip-format": "{controller_alias}\t{controller_address}\n\n{num_connections} connected",
+        "tooltip-format-connected": "{controller_alias}\t{controller_address}\n\n{num_connections} connected\n\n{device_enumerate}",
+        "tooltip-format-enumerate-connected": "{device_alias}\t{device_address}",
+        "tooltip-format-enumerate-connected-battery": "{device_alias}\t{device_address}\t{device_battery_percentage}%",
+        "on-click": "blueman-manager"
+    },
+   "custom/vol-icon": {
+        "format": "<span font_family='Font Awesome 6' size='xx-large'></span> ",
+        "interval": "once",
+        "on-click": "pavucontrol"
+    },
+   "custom/energy-icon": {
+        "format": " <span font_family='Font Awesome 6' size='small'></span> ",
+        "interval": "once",
+        "on-click": "tlpui"
+    },
+   "custom/hardware-icon": {
+        "format": "<span font_family='Font Awesome 6' size='xx-large'></span> ",
+        "interval": "once",
+        "on-click": "GDK_BACKEND=x11 hardinfo"
+    },
+   "custom/lang-icon": {
+        "format": "<span font_family='Font Awesome 6' size='xx-large'></span> |",
+        "interval": "once",
+    },
+   "custom/gap": {
+        "format": "  ",
+        "interval": "once",
+    },
+    "custom/lang": {
+        "format": "<span size='xx-small'> </span>{}",
+	"exec" : "swaymsg -t get_inputs | jq -r '.[] | select(.identifier == \"9610:12:HAILUCK_CO.,LTD_USB_KEYBOARD\") | .xkb_active_layout_name' | tail -1 | cut -c1,2",
+	"interval": 60
+    },
+    "tray": {
+        "icon-size": 14,
+    	"spacing": 10
+    }
+}
