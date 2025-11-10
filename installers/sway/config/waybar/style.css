@@ -1,0 +1,459 @@
+/* =============================================================================
+ *
+ * Waybar configuration
+ *
+ * Configuration reference: https://github.com/Alexays/Waybar/wiki/Configuration
+ *
+ * =========================================================================== */
+/* theme specific color values */
+@define-color transparent_background_color rgba(20, 22, 27, 0.9);
+@define-color background_color #14161b;
+@define-color bright_text_color #ffffff;
+@define-color dim_text_color rgba(255,255,255,0.3);
+@define-color text_color #eeeeee;
+@define-color accent_color #55b5db;
+@define-color alternative_color #16a085;
+@define-color warning_color #db7b55;
+@define-color error_color #Cd3f45;
+/* -----------------------------------------------------------------------------
+ * Keyframes
+ * -------------------------------------------------------------------------- */
+
+@keyframes blink-warning {
+    70% {
+        color: @dim_text_color;
+    }
+
+    to {
+        color: @warning_color;
+    }
+}
+
+@keyframes blink-critical {
+    70% {
+      color: @dim_text_color;
+    }
+
+    to {
+        color: @error_color;
+    }
+}
+
+
+/* -----------------------------------------------------------------------------
+ * Base styles
+ * -------------------------------------------------------------------------- */
+
+/* Reset all styles */
+* {
+    transition-property: background-color, color, border-color;
+    transition-duration: .3s;
+    border: 0;
+    border-radius: 0;
+    /* `otf-font-awesome` is required to be installed for icons */
+    /*font-family: Roboto, Helvetica, Arial, sans-serif;*/
+    /*font-family: Ubuntu;*/
+    font-family: Source Code Pro, monospace;
+    font-size: 18px;
+    font-weight: bold;
+    /* min-height: 16px; */
+    padding: 0;
+    margin: 0;
+}
+
+/* Each module */
+#workspaces button,
+#custom-menu,
+#custom-scratchpad,
+#custom-media,
+#mode,
+#idle_inhibitor,
+#pulseaudio,
+#cpu,
+#memory,
+#temperature,
+#disk,
+#backlight,
+#network,
+#bluetooth,
+#custom-bluetooth-icon,
+#battery,
+#custom-battery,
+#custom-lang,
+#custom-pacman,
+#tray,
+#custom-help,
+#custom-wlogout,
+#custom-pamac,
+#mpd,
+#clock {
+    padding: 0 0.25em;
+    margin: 0 2px 1px 0;
+    border-radius: 3px;
+    border-bottom: 3px solid @dim_text_color;
+}
+
+#backlight,
+#pulseaudio,
+#custom-lang,
+#disk,
+#temperature,
+#battery,
+#custom-battery,
+#memory,
+#network,
+#bluetooth,
+#custom-bluetooth-icon,
+#cpu
+{
+    color: @dim_text_color;
+    /* border-bottom: 1px solid rgba(255, 255, 255, 0.7); */
+}
+
+/*
+#clock,
+#network,
+#custom-media,
+#custom-wlogout,
+#custom-pamac,
+#tray,
+#mode,
+#idle_inhibitor,
+#mpd {
+    color: #dedede;
+    margin-top: 2px;
+}
+*/
+#window {
+    font-weight: bold;
+    margin-right: 25px;
+    color: @accent_color;
+}
+
+window#waybar {
+    background-color: @background_color;
+    color: @text_color;
+    /* border-bottom: 0.5px solid rgba(0, 0, 0, 0.1); */
+
+    /* transition-property: background-color; */
+    /* transition-duration: .5s; */
+}
+
+window#waybar.hidden {
+    opacity: 0.2;
+}
+
+/*
+window#waybar.empty {
+    background-color: transparent;
+}
+window#waybar.solo {
+    background-color: #FFFFFF;
+}
+*/
+
+window#waybar.termite {
+    background-color: #3F3F3F;
+}
+
+window#waybar.chromium {
+    background-color: #000000;
+    border: none;
+}
+
+/* -----------------------------------------------------------------------------
+ * Module styles
+ * -------------------------------------------------------------------------- */
+
+#clock {
+	margin-right: 1em;
+}
+
+#tray {
+    margin-right: 5px;
+}
+
+#workspaces {
+    margin-left: 2px;
+    margin-top: 2px;
+}
+
+#workspaces button {
+    min-width: 15px;
+    padding-left: 3px;
+    padding-right: 3px;
+    /* margin: 0 0px; */
+    background-color: transparent;
+    color: @accent_color;
+    /* border-bottom: 1px solid rgba(255,255,255,0.7); */
+}
+
+/* https://github.com/Alexays/Waybar/wiki/FAQ#the-workspace-buttons-have-a-strange-hover-effect */
+#workspaces button:hover {
+    background: rgba(0, 0, 0, 0.2);
+    box-shadow: inherit;
+    /* border-bottom: 1px solid #ffffff; */
+    color: @text_color;
+    border-color: @alternative_color;
+}
+
+#workspaces button.visible {
+    /* border-bottom: 1px solid rgba(255, 255, 255, 1.0); */
+    color: #ff0000;
+}
+
+#workspaces button.focused {
+    /* border-bottom: 1px solid rgba(255, 255, 255, 1.0); */
+    color: @text_color;
+    border-color: @alternative_color;
+    background-color: @accent_color;
+}
+
+#workspaces button.urgent {
+    border-color: @error_color;
+    color: @error_color;
+}
+
+#workspaces button.persistent {
+    color: @dim_text_color;
+}
+
+#mode {
+    background: @background_color;
+    /* border-bottom: 3px solid #ffffff; */
+}
+
+#cpu {
+  /* No styles */
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+#cpu.warning {
+    border-bottom: 3px solid @warning_color;
+}
+
+#cpu.critical {
+    color: @error_color;
+    border-bottom: 3px solid @error_color;
+    animation-name: blink-critical;
+    animation-duration: 2s;
+}
+
+#memory {
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+#memory.full {
+    background-color: rgba(255, 0, 0, 0.5);
+}
+
+#memory.warning {
+    border-bottom: 3px solid @warning_color;
+}
+
+#memory.critical {
+    color: @error_color;
+    border-bottom: 3px solid @error_color;
+    animation-name: blink-critical;
+    animation-duration: 2s;
+}
+
+#temperature {
+    /* No styles */
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+#temperature.critical {
+    color: @error_color;
+    border-bottom: 3px solid @error_color;
+    animation-name: blink-critical;
+    animation-duration: 2s;
+}
+
+#pulseaudio {
+}
+
+#pulseaudio.muted {
+    /*background-color: #90b1b1;
+    color: #2a5c45;*/
+}
+
+#battery {
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+#battery.charging {
+    border-bottom: 3px solid #26A65B;
+}
+
+#battery.warning:not(.charging) {
+}
+#battery.critical:not(.charging) {
+    border-bottom: 3px solid @error_color;
+}
+#battery.warning.discharging {
+    border-bottom: 3px solid @warning_color;
+}
+#battery.critical.discharging {
+    color: @error_color;
+    animation-name: blink-critical;
+    animation-duration: 2s;
+}
+
+#custom-battery {
+}
+#custom-battery.Charging {
+    color: rgba(0, 255, 0, 1);
+}
+
+label:focus {
+    background-color: #000000;
+}
+
+#backlight {
+}
+
+#network {
+}
+
+#network.disconnected {
+    background-color: #f53c3c;
+}
+
+#custom-terminal {
+    background-image: url('/home/jezek/.config/waybar/terminal.svg');
+    background-repeat: no-repeat;
+    margin-top: 9px;
+}
+
+#custom-filemanager {
+    background-image: url('/home/jezek/.config/waybar/filemanager.svg');
+    background-repeat: no-repeat;
+    margin-left: 9px;
+    margin-top: 10px;
+}
+
+#custom-browser {
+    background-image: url('/home/jezek/.config/waybar/browser.svg');
+    background-repeat: no-repeat;
+    margin-left: 7px;
+    margin-top: 10px;
+}
+
+#custom-libre {
+    background-image: url('/home/jezek/.config/waybar/word.svg');
+    background-repeat: no-repeat;
+    margin-left: 4px;
+    margin-top: 10px;
+}
+
+#custom-mmfm {
+    background-image: url('/home/jezek/.config/waybar/mmfm.svg');
+    background-repeat: no-repeat;
+    /* background-position: center; */
+    margin-left: 7px;
+    margin-top: 11px;
+}
+
+#custom-vmp {
+    background-image: url('/home/jezek/.config/waybar/vmp.svg');
+    background-repeat: no-repeat;
+    /* background-position: center; */
+    margin-left: 9px;
+    margin-top: 11px;
+}
+
+#custom-printer {
+    background-image: url('/home/jezek/.config/waybar/printer.svg');
+    background-repeat: no-repeat;
+    margin-left: 4px;
+    margin-top: 10px;
+}
+
+#custom-software {
+    background-image: url('/home/jezek/.config/waybar/software.svg');
+    background-repeat: no-repeat;
+    margin-top: 10px;
+}
+
+#custom-apps {
+    background-image: url('/home/jezek/.config/waybar/apps.svg');
+    background-repeat: no-repeat;
+    margin-left: 5px;
+    margin-top: 11px;
+}
+
+#custom-overview {
+    background-image: url('/home/jezek/.config/waybar/overview.svg');
+    background-repeat: no-repeat;
+    margin-left: 4px;
+    margin-top: 10px;
+}
+
+#custom-settings {
+    background-image: url('/home/jezek/.config/waybar/settings.svg');
+    background-repeat: no-repeat;
+    margin-left: 5px;
+    margin-top: 11px;
+}
+
+#custom-month {
+    margin-top: 6px;
+}
+
+#custom-media {
+    color: #2a5c45;
+    min-width: 100px;
+}
+
+#custom-media.custom-spotify {
+    background-color: #66cc99;
+}
+
+#custom-media.custom-vlc {
+    background-color: #ffa000;
+}
+
+#tray {
+}
+
+#idle_inhibitor {
+}
+
+#idle_inhibitor.activated {
+    background-color: #ecf0f1;
+    color: #2d3436;
+}
+
+#mpd {
+    color: #2a5c45;
+}
+
+#mpd.disconnected {
+    background-color: #f53c3c;
+}
+
+#mpd.stopped {
+    background-color: #90b1b1;
+}
+
+#mpd.paused {
+    background-color: #51a37a;
+}
+tooltip {
+	color: @theme_fg_color;
+	background-color: @theme_bg_color;
+	text-shadow: none;
+}
+tooltip * {
+	color: @theme_fg_color;
+	text-shadow: none;
+}
