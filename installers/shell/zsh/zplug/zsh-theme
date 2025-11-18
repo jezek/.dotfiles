@@ -2,29 +2,46 @@
 
 setopt prompt_subst
 
-# Format command duration in a human readable way
+# Format command duration in a human readable way.
+# For sub-second durations show increasing decimal precision until the value reaches 1.
 _jezek_format_duration() {
-  local sec=$1
+  local sec=${1:-0}
+  if (( sec < 0 )); then
+    sec=0
+  fi
+
   if (( sec < 1 )); then
-    echo "< 0s"
+    local precision=1
+    local threshold=0.1
+    local max_precision=6
+    while (( precision < max_precision && sec < threshold )); do
+      precision=$(( precision + 1 ))
+      threshold=$(( threshold / 10 ))
+    done
+    local formatted
+    formatted=$(LC_NUMERIC=C printf "%.*f" $precision "$sec")
+    echo "${formatted}s"
   elif (( sec < 60 )); then
-    echo "${sec}s"
+    local seconds=${sec%.*}
+    echo "${seconds}s"
   elif (( sec < 3600 )); then
-    local m=$(( sec / 60 ))
-    local s=$(( sec % 60 ))
+    local total=${sec%.*}
+    local m=$(( total / 60 ))
+    local s=$(( total % 60 ))
     echo "${m}m${s}s"
   else
-    local h=$(( sec / 3600 ))
-    local m=$(( (sec % 3600) / 60 ))
-    local s=$(( sec % 60 ))
+    local total=${sec%.*}
+    local h=$(( total / 3600 ))
+    local m=$(( (total % 3600) / 60 ))
+    local s=$(( total % 60 ))
     echo "${h}h${m}m${s}s"
   fi
 }
 
 # Store start time and show start timestamp on the right
 jezek_preexec () {
-  # Store command start time (seconds since epoch)
-  JEZEK_CMD_START=$EPOCHSECONDS
+  # Store command start time with fractional precision.
+  JEZEK_CMD_START=$EPOCHREALTIME
 
   local TIME=`date +"[%H:%M:%S]"`
   local TIMELEN=${#${TIME}}
@@ -40,7 +57,7 @@ jezek_precmd () {
   # Compute elapsed time if start timestamp is available
   local DUR=""
   if [[ -n "$JEZEK_CMD_START" ]]; then
-    local elapsed=$(( EPOCHSECONDS - JEZEK_CMD_START ))
+    local elapsed=$(( EPOCHREALTIME - JEZEK_CMD_START ))
     if (( elapsed >= 0 )); then
       DUR="$(_jezek_format_duration $elapsed)"
     fi
