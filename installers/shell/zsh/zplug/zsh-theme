@@ -1,0 +1,117 @@
+# Based on oh-my-zsh gnzh theme
+
+setopt prompt_subst
+
+# Format command duration in a human readable way
+_jezek_format_duration() {
+  local sec=$1
+  if (( sec < 1 )); then
+    echo "< 0s"
+  elif (( sec < 60 )); then
+    echo "${sec}s"
+  elif (( sec < 3600 )); then
+    local m=$(( sec / 60 ))
+    local s=$(( sec % 60 ))
+    echo "${m}m${s}s"
+  else
+    local h=$(( sec / 3600 ))
+    local m=$(( (sec % 3600) / 60 ))
+    local s=$(( sec % 60 ))
+    echo "${h}h${m}m${s}s"
+  fi
+}
+
+# Store start time and show start timestamp on the right
+jezek_preexec () {
+  # Store command start time (seconds since epoch)
+  JEZEK_CMD_START=$EPOCHSECONDS
+
+  local TIME=`date +"[%H:%M:%S]"`
+  local TIMELEN=${#${TIME}}
+  print -P "\033[1A\033[$(($COLUMNS-$TIMELEN-1))C%F{green}${TIME}%f"
+
+}
+
+# Print end-of-command time and duration on the right
+jezek_precmd () {
+  # Current time in [HH:MM:SS] form
+  local TIME=`date +"[%H:%M:%S]"`
+
+  # Compute elapsed time if start timestamp is available
+  local DUR=""
+  if [[ -n "$JEZEK_CMD_START" ]]; then
+    local elapsed=$(( EPOCHSECONDS - JEZEK_CMD_START ))
+    if (( elapsed >= 0 )); then
+      DUR="$(_jezek_format_duration $elapsed)"
+    fi
+		unset JEZEK_CMD_START
+  fi
+
+  # Text shown on the right: "1m23s [12:34:56]" or just "[12:34:56]"
+  local TEXT
+  if [[ -n "$DUR" ]]; then
+    TEXT="${DUR} ${TIME}"
+  else
+    TEXT="${TIME}"
+  fi
+
+  local TEXTLEN=${#${TEXT}}
+  print -P "\033[$(($COLUMNS-$TEXTLEN-1))C%F{red}${TEXT}%f"
+}
+
+() {
+
+local PR_USER PR_USER_OP PR_PROMPT PR_HOST
+
+# Set user color and prompt symbol based on UID
+if [[ $UID -ne 0 ]]; then
+  # normal user
+  PR_USER='%F{green}%n%f'
+  PR_USER_OP='%F{green}%#%f'
+  PR_PROMPT='%f$%f'
+else
+  # root
+  PR_USER='%F{red}%n%f'
+  PR_USER_OP='%F{red}%#%f'
+  PR_PROMPT='%F{red}#%f'
+fi
+
+# Highlight host differently over SSH
+if [[ -n "$SSH_CLIENT" || -n "$SSH2_CLIENT" ]]; then
+  # over SSH
+  PR_HOST='%F{red}%M%f'
+else
+   # local
+  PR_HOST='%F{green}%M%f'
+fi
+
+local return_code="%(?..%F{red}%? ↵ %f)"
+local return_time="%F{red}%D{[%H:%M:%S]}%f"
+
+local user_host="${PR_USER}%F{cyan}@${PR_HOST}"
+local current_dir="%B%F{blue}%~%f%b"
+local git_branch='$(git_prompt_info)'
+
+# Detect container / distrobox and build prefix
+local container_prefix=""
+if [[ -n "$CONTAINER_ID" ]] || [[ -f /run/.containerenv ]]; then
+  local _cname="${CONTAINER_ID:-$(hostname)}"
+  container_prefix="📦[${_cname}] "
+fi
+
+# Move cursor one line up (for the fancy two-line prompt)
+local up=$'\e[1A'
+
+PROMPT="${${up}%}${return_code}
+${container_prefix}${user_host} ${current_dir} ${git_branch}
+$PR_PROMPT "
+#RPROMPT="${return_time}"
+
+ZSH_THEME_GIT_PROMPT_PREFIX="%F{yellow}‹"
+ZSH_THEME_GIT_PROMPT_SUFFIX="› %f"
+
+}
+
+autoload -U add-zsh-hook
+add-zsh-hook precmd jezek_precmd
+add-zsh-hook preexec jezek_preexec

@@ -9,10 +9,14 @@ zplug "zdharma-continuum/history-search-multi-word", defer:2
 zplug "robbyrussell/oh-my-zsh", use:"lib/*.zsh"
 zplug "plugins/git",   from:oh-my-zsh
 #zplug "themes/gnzh",   from:oh-my-zsh, as:theme
-zplug "jezek/3e2b3b9ed350084ccde97f8be8c7a88f", \
-    from:gist, \
+#zplug "jezek/3e2b3b9ed350084ccde97f8be8c7a88f", \
+#    from:gist, \
+#    as:theme, \
+#    use:jezek.zsh-theme 
+zplug "~/.dotfiles/installers/shell/zsh/zplug", \
+    from:local, \
     as:theme, \
-    use:jezek.zsh-theme 
+    use:"zsh-theme"
 #
 # Install plugins if there are plugins that have not been installed
 if ! zplug check; then
