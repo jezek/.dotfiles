@@ -38,6 +38,17 @@ _jezek_format_duration() {
   fi
 }
 
+# Compute Python venv/conda prefix dynamically for the prompt
+_jezek_venv_prefix() {
+  local prefix=""
+  if [[ -n "$VIRTUAL_ENV" ]]; then
+    prefix="🐍[$(basename "$VIRTUAL_ENV")] "
+  elif [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+    prefix="🐍[${CONDA_DEFAULT_ENV}] "
+  fi
+  echo "$prefix"
+}
+
 # Store start time and show start timestamp on the right
 jezek_preexec () {
   # Store command start time with fractional precision.
@@ -108,6 +119,7 @@ local return_time="%F{red}%D{[%H:%M:%S]}%f"
 local user_host="${PR_USER}%F{cyan}@${PR_HOST}"
 local current_dir="%B%F{blue}%~%f%b"
 local git_branch='$(git_prompt_info)'
+local venv_prefix='$(_jezek_venv_prefix)'
 
 # Detect container / distrobox and build prefix
 local container_prefix=""
@@ -120,7 +132,7 @@ fi
 local up=$'\e[1A'
 
 PROMPT="${${up}%}${return_code}
-${container_prefix}${user_host} ${current_dir} ${git_branch}
+${container_prefix}${venv_prefix}${user_host} ${current_dir} ${git_branch}
 $PR_PROMPT "
 #RPROMPT="${return_time}"
 
