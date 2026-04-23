@@ -49,33 +49,63 @@ _jezek_venv_prefix() {
   echo "$prefix"
 }
 
-# Store start time and show start timestamp on the right
-jezek_preexec () {
-  # Store command start time with fractional precision.
-  JEZEK_CMD_START=$EPOCHREALTIME
+_jezek_print_right_line() {
+  local color="$1"
+  local text="$2"
+  local columns=${COLUMNS:-80}
+  local pad=$(( columns - ${#text} - 1 ))
+  if (( pad < 0 )); then
+    pad=0
+  fi
 
-  local TIME=`date +"[%H:%M:%S]"`
-  local TIMELEN=${#${TIME}}
-  print -P "\033[1A\033[$(($COLUMNS-$TIMELEN-1))C%F{green}${TIME}%f"
-
+  local spaces
+  spaces=$(printf '%*s' "$pad" '')
+  print -P -- "${spaces}%F{${color}}${text}%f"
 }
 
-# Print end-of-command time and duration on the right
-jezek_precmd () {
-  # Current time in [HH:MM:SS] form
-  local TIME=`date +"[%H:%M:%S]"`
+_jezek_print_status_line() {
+  local color="$1"
+  local left="$2"
+  local right="$3"
+  local columns=${COLUMNS:-80}
+  local pad=$(( columns - ${#left} - ${#right} - 1 ))
+  if (( pad < 1 )); then
+    pad=1
+  fi
 
-  # Compute elapsed time if start timestamp is available
+  local spaces
+  spaces=$(printf '%*s' "$pad" '')
+  print -P -- "%F{${color}}${left}${spaces}${right}%f"
+}
+
+_jezek_refresh_prompt() {
+  # Refresh prompt safely after a terminal resize while editing a command line.
+  if zle >/dev/null 2>&1; then
+    zle reset-prompt
+  fi
+}
+
+# Store command start and print start timestamp on the right.
+jezek_preexec() {
+  JEZEK_CMD_START=$EPOCHREALTIME
+  _jezek_print_right_line "green" "$(date +"[%H:%M:%S]")"
+}
+
+# Print end-of-command time and duration on the right.
+jezek_precmd() {
+  local exit_code=$?
+  local TIME
+  TIME=$(date +"[%H:%M:%S]")
+
   local DUR=""
   if [[ -n "$JEZEK_CMD_START" ]]; then
     local elapsed=$(( EPOCHREALTIME - JEZEK_CMD_START ))
     if (( elapsed >= 0 )); then
       DUR="$(_jezek_format_duration $elapsed)"
     fi
-		unset JEZEK_CMD_START
+    unset JEZEK_CMD_START
   fi
 
-  # Text shown on the right: "1m23s [12:34:56]" or just "[12:34:56]"
   local TEXT
   if [[ -n "$DUR" ]]; then
     TEXT="${DUR} ${TIME}"
@@ -83,8 +113,12 @@ jezek_precmd () {
     TEXT="${TIME}"
   fi
 
-  local TEXTLEN=${#${TEXT}}
-  print -P "\033[$(($COLUMNS-$TEXTLEN-1))C%F{red}${TEXT}%f"
+  local ERR=""
+  if (( exit_code != 0 )); then
+    ERR="${exit_code} ↵"
+  fi
+
+  _jezek_print_status_line "red" "${ERR}" "${TEXT}"
 }
 
 () {
@@ -113,9 +147,6 @@ else
   PR_HOST='%F{green}%M%f'
 fi
 
-local return_code="%(?..%F{red}%? ↵ %f)"
-local return_time="%F{red}%D{[%H:%M:%S]}%f"
-
 local user_host="${PR_USER}%F{cyan}@${PR_HOST}"
 local current_dir="%B%F{blue}%~%f%b"
 local git_branch='$(git_prompt_info)'
@@ -128,13 +159,8 @@ if [[ -n "$CONTAINER_ID" ]] || [[ -f /run/.containerenv ]]; then
   container_prefix="📦[${_cname}] "
 fi
 
-# Move cursor one line up (for the fancy two-line prompt)
-local up=$'\e[1A'
-
-PROMPT="${${up}%}${return_code}
-${container_prefix}${venv_prefix}${user_host} ${current_dir} ${git_branch}
+PROMPT="${container_prefix}${venv_prefix}${user_host} ${current_dir} ${git_branch}
 $PR_PROMPT "
-#RPROMPT="${return_time}"
 
 ZSH_THEME_GIT_PROMPT_PREFIX="%F{yellow}‹"
 ZSH_THEME_GIT_PROMPT_SUFFIX="› %f"
@@ -144,3 +170,4 @@ ZSH_THEME_GIT_PROMPT_SUFFIX="› %f"
 autoload -U add-zsh-hook
 add-zsh-hook precmd jezek_precmd
 add-zsh-hook preexec jezek_preexec
+TRAPWINCH() { _jezek_refresh_prompt }
