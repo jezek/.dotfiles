@@ -8,7 +8,18 @@ import time
 from pathlib import Path
 
 from kitty.boss import Boss
-from kitty.fast_data_types import add_timer
+try:
+    from kitty.fast_data_types import (
+        CLOSE_BEING_CONFIRMED,
+        IMPERATIVE_CLOSE_REQUESTED,
+        add_timer,
+        current_application_quit_request,
+    )
+except Exception:
+    from kitty.fast_data_types import add_timer
+    CLOSE_BEING_CONFIRMED = None
+    IMPERATIVE_CLOSE_REQUESTED = None
+    current_application_quit_request = None
 from kitty.window import Window
 
 # ------------------------------------------------------------
@@ -17,6 +28,7 @@ from kitty.window import Window
 
 # Toggle logging by editing this value:
 LOG_ENABLED = True
+LOG_EVENTS = True
 
 # Default session/log paths if env vars are not set:
 DEFAULT_SESSION_PATH = os.path.expanduser("~/.config/kitty/quake.session")
@@ -67,6 +79,11 @@ def _log(msg: str) -> None:
         pass
 
 
+def _log_event(msg: str) -> None:
+    if LOG_ENABLED and LOG_EVENTS:
+        _log(msg)
+
+
 def _session_path_arg() -> str:
     raw = os.environ.get(SESSION_PATH_ENV, "").strip()
     p = raw or DEFAULT_SESSION_PATH
@@ -111,6 +128,18 @@ def _count_windows(boss: Boss) -> int:
     return sum(1 for w in boss.all_windows if _is_window_usable(w))
 
 
+def _is_quitting() -> bool:
+    if current_application_quit_request is None:
+        return False
+    try:
+        req = current_application_quit_request()
+    except Exception:
+        return False
+    if IMPERATIVE_CLOSE_REQUESTED is None and CLOSE_BEING_CONFIRMED is None:
+        return bool(req)
+    return req in (IMPERATIVE_CLOSE_REQUESTED, CLOSE_BEING_CONFIRMED)
+
+
 def _rate_limited(min_interval_s: float) -> bool:
     global _last_save_ts
     now = time.monotonic()
@@ -123,9 +152,11 @@ def _rate_limited(min_interval_s: float) -> bool:
 def _save(boss: Boss, window: Window, reason: str, min_interval_s: float) -> None:
     global _autosave_disabled
     if _autosave_disabled:
+        _log_event(f"{time.strftime('%F %T')} skip save reason={reason} (autosave_disabled)")
         return
 
     if _rate_limited(min_interval_s):
+        _log_event(f"{time.strftime('%F %T')} skip save reason={reason} (rate_limited)")
         return
 
     w = _pick_window_for_save(boss, window)
@@ -154,6 +185,13 @@ def _save(boss: Boss, window: Window, reason: str, min_interval_s: float) -> Non
 
 def on_start(boss: Boss, window: Window, data: dict[str, Any]) -> None:
     _log(f"{time.strftime('%F %T')} watcher loaded pid={os.getpid()} session={DEFAULT_SESSION_PATH}")
+    _log_event(
+        f"{time.strftime('%F %T')} config"
+        f" save_on_close={SAVE_ON_CLOSE}"
+        f" close_debounce_ms={CLOSE_DEBOUNCE_MS}"
+        f" resize_min_ms={RESIZE_MIN_INTERVAL_MS}"
+        f" use_foreground_process={USE_FOREGROUND_PROCESS}"
+    )
 
 
 def on_resize(boss: Boss, window: Window, data: dict[str, Any]) -> None:
@@ -183,9 +221,18 @@ def on_close(boss: Boss, window: Window, data: dict[str, Any]) -> None:
     global _close_save_seq
     _close_save_seq += 1
     seq = _close_save_seq
+    _log_event(
+        f"{time.strftime('%F %T')} close event seq={seq}"
+        f" windows={_count_windows(boss)}"
+        f" quitting={_is_quitting()}"
+    )
 
     def _cb(timer_id: int | None = None) -> None:
         if seq != _close_save_seq:
+            _log_event(f"{time.strftime('%F %T')} skip save reason=close (superseded)")
+            return
+        if _is_quitting():
+            _log(f"{time.strftime('%F %T')} skip save reason=close (quit_request)")
             return
         if _count_windows(boss) == 0:
             _log(f"{time.strftime('%F %T')} skip save reason=close (no windows)")
