@@ -2,6 +2,7 @@
 if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
+#TODO sh: line 1: make: command not found
 
 if ! .isCmd vim; then
 	[ "$1" = plugin ] && return

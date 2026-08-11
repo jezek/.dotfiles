@@ -1,2 +1,4 @@
 */*
 !installers/*
+__pycache__
+.codex
