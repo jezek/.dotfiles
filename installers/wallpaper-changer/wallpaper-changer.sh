@@ -9,8 +9,12 @@ dotWallpaperChangerDir=${dotfilesDir}"/wallpaper-changer"
 dotWallpaperChangerConfigFile=${dotWallpaperChangerDir}"/wallpaper-changer.conf"
 if [ -f "${dotWallpaperChangerConfigFile}" ]; then
 	unset wallpaperChangerArgs
-	export "$(grep -v '#.*' "${dotWallpaperChangerConfigFile}" | xargs)"
-	wallpaperChangerArgs=( ${wallpaperChangerArgs[@]} )
+	if ! .loadConfig "$dotWallpaperChangerConfigFile" wallpaperChangerArgs; then
+		exit 1
+	fi
+	wallpaperChangerArgsConfig="$wallpaperChangerArgs"
+	read -r -a wallpaperChangerArgs <<< "$wallpaperChangerArgsConfig"
+	unset wallpaperChangerArgsConfig
 else
 	echo $cWarn"No config file found: "$cFile$dotWallpaperChangerConfigFile$cNone
 fi

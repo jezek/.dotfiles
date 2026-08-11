@@ -70,6 +70,111 @@ fi
 	printf '%s\n' "$@"
 }
 
+# Load literal variable assignments from a data-only config file.
+# Usage: .loadConfig FILE ALLOWED_VARIABLE...
+.loadConfig() {
+	if [ "$#" -lt 2 ]; then
+		(>&2 echo -e "$cErr"".loadConfig: expected a config file and at least one allowed variable"$cNone)
+		return 255
+	fi
+
+	local configFile="$1"
+	shift
+	if [ ! -r "$configFile" ]; then
+		(>&2 echo -e "$cErr""Config file is not readable: "$cFile"${configFile}"$cNone)
+		return 1
+	fi
+
+	local configLine configTrimmed configName configRaw configValue configVariable configExport
+	local configLineNumber=0
+	declare -A configAllowed=()
+	declare -A configSeen=()
+	declare -A configValues=()
+	declare -A configExports=()
+
+	for configVariable in "$@"; do
+		if [[ ! "$configVariable" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+			(>&2 echo -e "$cErr"".loadConfig: invalid allowed variable name: "$cNone"$configVariable")
+			return 255
+		fi
+		if [[ -n "${configAllowed[$configVariable]+x}" ]]; then
+			(>&2 echo -e "$cErr"".loadConfig: duplicate allowed variable: "$cNone"$configVariable")
+			return 255
+		fi
+		configAllowed[$configVariable]=1
+	done
+
+	while IFS= read -r configLine || [ -n "$configLine" ]; do
+		configLineNumber=$((configLineNumber + 1))
+		configTrimmed="${configLine#"${configLine%%[![:space:]]*}"}"
+		configTrimmed="${configTrimmed%"${configTrimmed##*[![:space:]]}"}"
+		[ -z "$configTrimmed" ] && continue
+		[[ "$configTrimmed" == \#* ]] && continue
+
+		if [[ ! "$configTrimmed" =~ ^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+			(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"expected a variable assignment")
+			return 1
+		fi
+
+		configName="${BASH_REMATCH[2]}"
+		configRaw="${BASH_REMATCH[3]}"
+		configExport="${BASH_REMATCH[1]}"
+		if [[ -z "${configAllowed[$configName]+x}" ]]; then
+			(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"unsupported variable \$$configName")
+			return 1
+		fi
+		if [[ -n "${configSeen[$configName]+x}" ]]; then
+			(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"duplicate variable \$$configName")
+			return 1
+		fi
+
+		if [[ ${#configRaw} -ge 2 && "${configRaw:0:1}" == '"' && "${configRaw: -1}" == '"' ]]; then
+			configValue="${configRaw:1:${#configRaw}-2}"
+			if [[ "$configValue" == *'"'* ]]; then
+				(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"embedded double quote is not supported")
+				return 1
+			fi
+		elif [[ ${#configRaw} -ge 2 && "${configRaw:0:1}" == "'" && "${configRaw: -1}" == "'" ]]; then
+			configValue="${configRaw:1:${#configRaw}-2}"
+			if [[ "$configValue" == *"'"* ]]; then
+				(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"embedded single quote is not supported")
+				return 1
+			fi
+		elif [[ "$configRaw" =~ ^[A-Za-z0-9_@%+=:,./-]*$ ]]; then
+			configValue="$configRaw"
+		else
+			(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"value must be a quoted literal or a simple unquoted value")
+			return 1
+		fi
+
+		if [[ "$configValue" == *'$'* || "$configValue" == *'`'* ]]; then
+			(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"shell substitutions are not supported in values")
+			return 1
+		fi
+		if [[ "$configValue" == *$'\t'* || "$configValue" == *$'\n'* ]]; then
+			(>&2 echo -e "$cErr""Invalid config "$cFile"${configFile}"$cErr" at line ${configLineNumber}: "$cNone"tabs and newlines are not supported in values")
+			return 1
+		fi
+
+		configSeen[$configName]=1
+		configValues[$configName]="$configValue"
+		if [[ -n "$configExport" ]]; then
+			configExports[$configName]=1
+		fi
+	done < "$configFile"
+
+	for configVariable in "${!configSeen[@]}"; do
+		declare -g -- "$configVariable=${configValues[$configVariable]}"
+		if [[ -n "${configExports[$configVariable]+x}" ]]; then
+			export "$configVariable"
+		else
+			export -n "$configVariable"
+		fi
+	done
+
+	return 0
+}
+
 # Yes/no dialog. Default answer (if pressing enter) is Yes (can be changed)
 # The first argument is the message that the user will see.
 # Second argumenti is optional, and if "n", then default will be No
