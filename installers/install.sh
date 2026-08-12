@@ -1,17 +1,7 @@
 #!/bin/bash
-#set -euo pipefail
-#IFS=$'\n\t' 
-# From: https://dwheeler.com/essays/filenames-in-shell.html
-#TODO Use recommendations from link above.
-
-#TODO make installer to be used in onliner with curl in any current directory
-
-#TODO installer errors on fp2
-# git-summary not found
-# vim_undo_clean.sh no found 
-# fingerprint - lsusb not found
-# vim first plug install echoes solarize not found
-# backup cant connect to jezek@192.168.88.132
+# This installer predates strict-mode Bash. Keep predicate failures explicit and
+# pass filenames as quoted arguments or arrays while the remaining call sites
+# are migrated incrementally.
 
 # colors
 cNone='\e[0m'
@@ -242,7 +232,7 @@ fi
 }
 
 .isCmd(){
-	type ${1%%"/"*} >/dev/null 2>&1 # command is everything until "/"
+	type "${1%%/*}" >/dev/null 2>&1 # command is everything until "/"
 	return $?
 }
 
@@ -274,8 +264,8 @@ local pmi=$(.packageManagerInstall)
 	local packages=()
 	
 	local cmdPkg
-	for cmdPkg in $*; do
-		local pkg=${cmdPkg#*"/"} # everything after "/"
+	for cmdPkg in "$@"; do
+		local pkg=${cmdPkg#*/} # everything after "/"
 		packages+=("${pkg}")
 	done
 	if [ "$debug" = 1 ]; then
@@ -326,7 +316,7 @@ local pmi=$(.packageManagerInstall)
 
 .backup() {
 	local filename
-	for fileName in $*; do 
+	for fileName in "$@"; do
 		if [ -e "${fileName}" ]; then # file exists
 			local backup="${fileName}.$(.timestamp).bak"
 
@@ -396,6 +386,39 @@ local pmi=$(.packageManagerInstall)
 	fi
 }
 
+# Copy a managed configuration file without linking application writes back
+# into this repository. Existing differing files can be backed up first.
+.copyConfig() {
+	if [ "$#" -ne 2 ]; then
+		(>&2 echo -e $cErr"Copy error: .copyConfig needs 2 arguments, got $#: "$cNone"$@")
+		return 255
+	fi
+	local source=$1
+	local target=$2
+
+	if [ ! -f "$source" ]; then
+		(>&2 echo -e $cErr"Copy error: source file not found: "$cFile"${source}"$cNone)
+		return 254
+	fi
+	if [ -f "$target" ] && cmp -s "$source" "$target"; then
+		echo -e "Copy not needed; ${cFile}${target}${cNone} is current."
+		return 2
+	fi
+	if [ -e "$target" ]; then
+		if ! .check_yes_no "File ${cFile}${target}${cNone} differs. Replace it with ${cFile}${source}${cNone}?"; then
+			return 1
+		fi
+		if .check_yes_no "Back up ${cFile}${target}${cNone}?"; then
+			.backup "$target" || return 253
+		fi
+	fi
+
+	local targetDirectory
+	targetDirectory=$(dirname "$target")
+	.run "mkdir -p '$targetDirectory'" || return 252
+	.run "cp -v '$source' '$target'"
+}
+
 # to global variable missing it assigns an array of missing commands passed as other arguments 
 # returns 1 if some command is missing
 .missing() {
@@ -405,7 +428,7 @@ local pmi=$(.packageManagerInstall)
 
 	missing=()
 	local cmd
-	for cmd in $*; do
+	for cmd in "$@"; do
 		if ! .isCmd "${cmd}"; then
 			missing+=("${cmd}")
 		fi
@@ -414,50 +437,55 @@ local pmi=$(.packageManagerInstall)
 	if [ "$debug" = 1 ]; then
 		(>&2 echo -e ".missing: results "$cYellow${missing[*]}$cNone)
 	fi
-	if [ ! ${#missing[*]} = 0 ]; then
-		#TODO error message
+	if [ "${#missing[@]}" -ne 0 ]; then
 		return 1 # something is missing
 	fi
 	return
 }
 
 .needCommand() {
-	if ! .missing $*; then
-		echo "we need theese essential programs for this script:"
-		echo -e $cCmd${missing[*]}$cNone
+	if ! .missing "$@"; then
+		echo "The following required commands are missing:"
+		echo -e "$cCmd${missing[*]}$cNone"
 		if .check_yes_no "install and continue?"; then
-			if ! .install ${missing[*]}; then
-				#TODO error message
+			if ! .install "${missing[@]}"; then
+				echo -e $cErr"Installing required commands failed: ${missing[*]}"$cNone
 				return 255 # install failed for some reason
 			else
-				.missing $*
-				return $?
+				if ! .missing "$@"; then
+					echo -e $cErr"Installation completed, but commands are still unavailable: ${missing[*]}"$cNone
+					return 254
+				fi
+				return 0
 			fi
 		else
-			#TODO error message
+			echo -e $cErr"Cannot continue without required commands: ${missing[*]}"$cNone
 			return 1 # user dont want to install needed packages
 		fi
 	fi
 	return
 }
 
-# installs command if missing.
-# if command is in package wthh different name, use "cmd/pkg" format.
-#TODO provide a way to install additional packages for the command. (audacious+plugins, tlp+tlp-rdw, ...)
+# Installs a command if missing. If its package has a different name, use the
+# "command/package" form. Install command-less companion packages separately
+# through .installPkg.
 .installCommand() {
-	if ! .missing $*; then
+	if ! .missing "$@"; then
 		echo "installing programs:"
-		echo -e $cCmd${missing[*]}$cNone
+		echo -e "$cCmd${missing[*]}$cNone"
 		if .check_yes_no "install?"; then
-			if ! .install ${missing[*]}; then
-				#TODO error message
+			if ! .install "${missing[@]}"; then
+				echo -e $cErr"Installing requested commands failed: ${missing[*]}"$cNone
 				return 255 # install failed for some reason
 			else
-				.missing $*
-				return $?
+				if ! .missing "$@"; then
+					echo -e $cErr"Installation completed, but commands are still unavailable: ${missing[*]}"$cNone
+					return 254
+				fi
+				return 0
 			fi
 		else
-			#TODO error message
+			echo "Installation declined; requested commands remain unavailable."
 			return 1 # user dont want to install needed packages
 		fi
 	fi
@@ -599,7 +627,6 @@ if [ ! -d $dotfilesDir ]; then
 		echo -e $cErr"Could not create $cFile'$dotfilesDir'"$cNone
 		exit 1
 	fi
-	#TODO test if allways clones to right directory (is running directory independent)
 	.run "git clone $github$githubName/.dotfiles.git '$dotfilesDir'" 
 
 	if [ ! -d $dotfilesDir ]; then
