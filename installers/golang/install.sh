@@ -2,207 +2,179 @@
 if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
-#TODO make it, so we can do it via one wget (goinup)
-.needCommand select case while uname awk ls tar tee chown mkdir
 
-# Get latest golang version from net
-
-.runRes goInstallVersion "curl https://go.dev/dl/ 2>/dev/null | grep -oP 'go\d+(\.\d+(\.\d+)?)?\s' | sort -V --reverse | head -1 | sed -e 's/\s\+$//'"
-if [ -z "$goInstallVersion" ]; then
-	echo -e $cErr"fetching latest golang version failed"$cNone
+if ! .needCommand curl tar sha256sum sort sed awk uname mktemp mv mkdir readlink; then
 	[ "$1" = plugin ] && return 1
 	exit 1
 fi
 
-#TODO upgrade golang version (inpiration: https://github.com/udhos/update-golang
-if ! .isCmd go; then
-	echo -e "${cCmd}go${cNone} not installed"
-	goInstallSources=("latest from golang.org (${goInstallVersion})" "install golang via package manager" "don't install")
-	select src in "${goInstallSources[@]}"; do
-		case $src in
-			"${goInstallSources[0]}") 
-				#continue the script 
-				break
-				;;
-			"${goInstallSources[1]}")
-				.install go gcc
-				if ! .isCmd go; then
-					echo -e $cErr"failed"$cNone
-					[ "$1" = plugin ] && return 1
-					exit 1
-				fi
-				[ "$1" = plugin ] && return
-				exit 0
-				;;
-			"${goInstallSources[2]}")
-				[ "$1" = plugin ] && return
-				exit 0
-				;;
-		esac
-	done
-else
-	#TODO check if upgrade avalable, if yes, ask if upgrade
+goProfileSource="$dotfilesDir/installers/golang/profile.sh"
+goProfileTarget="$dotfilesDir/shell/profile.d/golang.sh"
+.run "mkdir -p '$dotfilesDir/shell/profile.d'"
+.hardlink "$goProfileSource" "$goProfileTarget"
 
-	.runRes currentGoVersion "go version"
-
-	if ! .check_yes_no "Go already installed ${currentGoVersion}. Continue and upgrade to ${goInstallVersion}?"; then
-		[ "$1" = plugin ] && return
-		exit 0
-	fi
-	
-
-	.runRes goRoot "go env | grep GOROOT | sed 's/GOROOT=\"\\([^\"]\\+\\)\"/\\1/'"
-	backup="${goRoot}~"
-	if [ ! -w "$goRoot" ]; then
-		goSudo=$SUDO
-	fi
-	.run $goSudo" mv '$goRoot' '$backup'"
-	.run $goSudo" mkdir -p '$goRoot'"
-	if [ ! -d "$goRoot" ]; then 
-		unset goRoot
-	fi
+goMetadata=$(curl -fsSL 'https://go.dev/dl/?mode=json')
+if [ -z "$goMetadata" ]; then
+	echo -e $cErr"Fetching Go release metadata failed."$cNone
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
-#TODO uninstall apt installed golang for sure
-# go not installed, install latest from golang.org
-choices=("/usr/local/go" "$HOME/.go")
-while [ -z ${goRoot+x} ]; do
-	echo "Select golang root dir:"
-	select choice in "${choices[@]}"; do
-		case $choice in
-			"${choices[0]}")
-				goSudo=$SUDO
-				break
-				;;
-			"${choices[1]}")
-				break
-				;;
-		esac
-	done
-	if [ -d "$choice" ] && [ "$(ls -A $choice)" ]; then
-		# is dir and not empty
-		if [ -z ${backup+x} ]; then
-			backup="${choice}~"
-			.run $goSudo" mv $choice $backup"
-		fi
-	fi
-	if [ -d "$choice" ] && [ "$(ls -A $choice)" ]; then
-		# is dir and not empty
-		echo -e $cErr"failed to remove ${cDir}${choice}"$cNone
+goInstallVersion=$(printf '%s\n' "$goMetadata" | sed -n 's/^[[:space:]]*"version": "\(go[0-9.]*\)",$/\1/p' | head -n 1)
+if [ -z "$goInstallVersion" ]; then
+	echo -e $cErr"Could not determine the latest stable Go version."$cNone
+	[ "$1" = plugin ] && return 1
+	exit 1
+fi
+
+case "$(uname -m)" in
+	x86_64 | amd64) goInstallArchitecture=amd64 ;;
+	i386 | i486 | i586 | i686) goInstallArchitecture=386 ;;
+	aarch64 | arm64) goInstallArchitecture=arm64 ;;
+	armv6* | armv7*) goInstallArchitecture=armv6l ;;
+	ppc64le | s390x | riscv64) goInstallArchitecture=$(uname -m) ;;
+	*)
+		echo -e $cErr"Unsupported Go architecture: $(uname -m)"$cNone
 		[ "$1" = plugin ] && return 1
 		exit 1
-	fi
-	if [ ! -d "$choice" ]; then 
-		.run $goSudo" mkdir -p $choice"
-	fi
-	if [ -d $choice ]; then
-		goRoot="$choice"
-	fi
-done
+		;;
+esac
 
-restoreBackup(){
-	if [ ! "$backup" = "" ]; then
-		echo -e "Restoring backup"
-		.run $goSudo" mv $backup $goRoot"
+goInstallFile="${goInstallVersion}.linux-${goInstallArchitecture}.tar.gz"
+goInstallChecksum=$(printf '%s\n' "$goMetadata" | awk -v filename="$goInstallFile" '
+	index($0, "\"filename\": \"" filename "\"") { found=1; next }
+	found && /"sha256":/ { gsub(/[",]/, "", $2); print $2; exit }
+')
+unset goMetadata
+if [ -z "$goInstallChecksum" ]; then
+	echo -e $cErr"No checksum found for ${goInstallFile}."$cNone
+	[ "$1" = plugin ] && return 1
+	exit 1
+fi
+
+currentGoVersion=""
+goPackage=""
+if .isCmd go; then
+	currentGoVersion=$(go env GOVERSION 2>/dev/null)
+	goExecutable=$(readlink -f "$(command -v go)")
+	case "$(.packageManager)" in
+		apt) goPackage=$(dpkg-query -S "$goExecutable" 2>/dev/null | head -n 1 | cut -d: -f1) ;;
+		pacman) goPackage=$(pacman -Qoq "$goExecutable" 2>/dev/null | head -n 1) ;;
+	esac
+
+	if [ "$currentGoVersion" = "$goInstallVersion" ]; then
+		echo -e "${cCmd}Go ${currentGoVersion}${cNone} is already current."
+		source "$goProfileTarget"
+		[ "$1" = plugin ] && return 0
+		exit 0
 	fi
-}
+	if [ "$(printf '%s\n%s\n' "$goInstallVersion" "$currentGoVersion" | sort -V | tail -n 1)" = "$currentGoVersion" ]; then
+		echo -e "Installed ${cCmd}${currentGoVersion}${cNone} is newer than offered ${goInstallVersion}; leaving it unchanged."
+		source "$goProfileTarget"
+		[ "$1" = plugin ] && return 0
+		exit 0
+	fi
 
-# got $goRoot created
+	if [ -n "$goPackage" ]; then
+		echo -e "Go ${currentGoVersion} is managed by package ${cPkg}${goPackage}${cNone}."
+		if .check_yes_no "Upgrade it through the system package manager?"; then
+			.install "$goPackage"
+		else
+			echo "Package-managed Go was left unchanged."
+		fi
+		[ "$1" = plugin ] && return 0
+		exit 0
+	fi
 
-.runRes goInstallArchitecture "uname -m"
-if [[ "${goInstallArchitecture}" =~ arm ]]; then
-	goInstallArchitecture="armv6l"
-elif [[ "${goInstallArchitecture}" =~ aarch64 ]]; then
-	goInstallArchitecture="arm64"
-elif [[ "${goInstallArchitecture}" =~ 64 ]]; then
-	goInstallArchitecture="amd64"
+	goCurrentRoot=$(go env GOROOT 2>/dev/null)
+	echo -e "Go ${currentGoVersion} is installed in ${cDir}${goCurrentRoot}${cNone}; latest is ${goInstallVersion}."
+	if ! .check_yes_no "Replace this Go installation with ${goInstallVersion}?"; then
+		[ "$1" = plugin ] && return 0
+		exit 0
+	fi
+fi
+
+goTargets=("/usr/local/go" "$HOME/.local/share/go")
+goTarget=""
+if [ -n "$goCurrentRoot" ] && { [ "$goCurrentRoot" = "${goTargets[0]}" ] || [ "$goCurrentRoot" = "${goTargets[1]}" ]; }; then
+	goTarget="$goCurrentRoot"
 else
-	goInstallArchitecture="386"
-fi
-goInstallFile="https://storage.googleapis.com/golang/${goInstallVersion}.linux-${goInstallArchitecture}.tar.gz"
-echo "latest go file: $goInstallFile"
-
-if ! .run "curl --head -sf ${goInstallFile} >/dev/null"; then
-	echo -e $cErr"file ${cFile}${goInstallFile}${cErr} not found"$cNone
-	restoreBackup
-	[ "$1" = plugin ] && return 3
-	exit 3
-fi
-if ! .run "curl -f ${goInstallFile} | ${goSudo} tar -C ${goRoot} --strip-components=1 -vxzf - go"; then
-	echo -e $cErr"failed to extract go files from ${cFile}${goInstallFile}${cErr} to ${cDir}${goRoot}"$cNone
-	restoreBackup
-	[ "$1" = plugin ] && return 4
-	exit 4
-fi
-# go extracted to $goRoot
-.runRes og "ls -ld $(dirname ${goRoot}) | awk '{print \$3\":\"\$4}'"
-echo "$goRoot parent owner:group = $og"
-.run "${goSudo} chown -R ${og} ${goRoot}"
-
-# home directories
-if [ ! -d $HOME/.go/bin ]; then 
-	.run "mkdir -p ${HOME}/.go/bin"
-fi
-if [ ! -d $HOME/.go/src ]; then 
-	.run "mkdir -p ${HOME}/.go/src"
+	echo "Select Go installation directory:"
+	select goTarget in "${goTargets[@]}" "install through package manager" "don't install"; do
+		case "$goTarget" in
+			"${goTargets[0]}" | "${goTargets[1]}") break ;;
+			"install through package manager")
+				case "$(.packageManager)" in
+					apt) .install go/golang-go ;;
+					pacman) .install go ;;
+					*) echo -e $cErr"No supported package manager found."$cNone ;;
+				esac
+				goInstallResult=$?
+				[ "$1" = plugin ] && return "$goInstallResult"
+				exit "$goInstallResult"
+				;;
+			"don't install")
+				[ "$1" = plugin ] && return 0
+				exit 0
+				;;
+		esac
+	done
 fi
 
-#TODO check if allready in path, upgrade if outdated
-# paths to profiles
-profileEtc=()
-profileHome=()
-if [ "${goRoot}" = ${choices[0]} ]; then 
-	profileEtc+=('PATH='$goRoot'/bin:$PATH')
-else
-	profileHome+=('GOROOT='$goRoot)
+goSudo=""
+if [ "$goTarget" = "/usr/local/go" ]; then
+	goSudo=$SUDO
 fi
-profileHome=('PATH='$HOME'/.go/bin:$PATH')
-profileHome+=('export GOPATH='$HOME'/.go:'$HOME'/Programy/go')
+goTargetParent=$(dirname "$goTarget")
+goStage="${goTarget}.new.$$"
+goBackup="${goTarget}.backup.$(date +%Y%m%d%H%M%S)"
+goTempDir=$(mktemp -d)
+goArchive="$goTempDir/$goInstallFile"
 
-
-if [ ${#profileEtc[@]} -ne 0 ]; then
-	profileEtcFile="/etc/profile.d/golang.sh"
-	echo -e "writing to ${cFile}${profileEtcFile}${cNone}:"
-	echo -en "${cYellow}"
-	.toLines "${profileEtc[@]}"
-	echo -en "${cNone}"
-	.toLines "${profileEtc[@]}" | ${goSudo} tee ${profileEtcFile} >/dev/null
-	res=$?
-	if [ $res = 0 ]; then
-		echo -e $cLightGreen"ok"$cNone
-	else
-		echo -e $cErr"failed!"$cNone
-	fi
-	source <(.toLines "${profileEtc[@]}")
-	profileChanged=1
+if ! curl -fL "https://go.dev/dl/$goInstallFile" -o "$goArchive"; then
+	echo -e $cErr"Downloading ${goInstallFile} failed."$cNone
+	rm -rf -- "$goTempDir"
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
-if [ ${#profileHome[@]} -ne 0 ]; then
-	if [ ! -d "$dotfilesDir/shell/profile.d" ]; then
-		.run "mkdir -p '$dotfilesDir/shell/profile.d'"
-	fi
-	profileHomeFile="${dotfilesDir}/shell/profile.d/golang.sh"
-	echo -e "writing to ${cFile}${profileHomeFile}${cNone}:"
-	echo -en "${cYellow}"
-	.toLines "${profileHome[@]}" | tee ${profileHomeFile}
-	res=$?
-	if [ $res = 0 ]; then
-		echo -e $cLightGreen"ok"$cNone
-	else
-		echo -e $cErr"failed!"$cNone
-	fi
-	source <(.toLines "${profileHome[@]}")
-	profileChanged=1
+if ! printf '%s  %s\n' "$goInstallChecksum" "$goArchive" | sha256sum -c -; then
+	echo -e $cErr"Checksum verification failed for ${goInstallFile}."$cNone
+	rm -rf -- "$goTempDir"
+	[ "$1" = plugin ] && return 1
+	exit 1
+fi
+if ! tar -C "$goTempDir" -xzf "$goArchive" || [ ! -x "$goTempDir/go/bin/go" ]; then
+	echo -e $cErr"Extracting ${goInstallFile} failed."$cNone
+	rm -rf -- "$goTempDir"
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
-if [ ! "$backup" = "" ]; then
-	if .check_yes_no "remove backup "$cFile${backup}$cNone"?"; then
-		.run $goSudo" rm -rf '$backup'"
-	fi
+if ! .run "$goSudo mkdir -p '$goTargetParent'" || ! .run "$goSudo mv '$goTempDir/go' '$goStage'"; then
+	echo -e $cErr"Could not stage Go in ${goTargetParent}."$cNone
+	rm -rf -- "$goTempDir"
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
 
-if [ "$profileChanged" = 1 ]; then
-	echo "logout/login needed for changes to be applied, or copy/paste yellow text to apply to this sesion"
-	read
+if [ -e "$goTarget" ] && ! .run "$goSudo mv '$goTarget' '$goBackup'"; then
+	echo -e $cErr"Could not back up existing Go installation."$cNone
+	rm -rf -- "$goTempDir"
+	[ "$1" = plugin ] && return 1
+	exit 1
 fi
+if ! .run "$goSudo mv '$goStage' '$goTarget'"; then
+	echo -e $cErr"Could not activate the new Go installation."$cNone
+	[ -e "$goBackup" ] && .run "$goSudo mv '$goBackup' '$goTarget'"
+	rm -rf -- "$goTempDir"
+	[ "$1" = plugin ] && return 1
+	exit 1
+fi
+rm -rf -- "$goTempDir"
 
-.install gcc
+source "$goProfileTarget"
+echo -e "Installed ${cCmd}$($goTarget/bin/go version)${cNone}."
+if [ -e "$goBackup" ]; then
+	echo -e "Previous installation retained at ${cDir}${goBackup}${cNone}."
+fi
+echo "Start a new login shell to apply PATH changes everywhere."
