@@ -17,27 +17,83 @@ set -uo pipefail   # bez -e – chceme pokračovať pri chybách
 log() { printf '[%(%H:%M:%S)T] %s\n' -1 "$*"; }
 run() { log "$ $*"; "$@"; }
 
-# vráti URL .flatpakrepo alebo prázdny reťazec
+# vráti lokálny .flatpakrepo deskriptor, ak je nainštalovaný
 get_flatpakrepo() {
-  local remote="$1" url=""
-  url=$(flatpak remotes --system --columns=name,url | awk -v r="$remote" '$1==r {print $2"/"r".flatpakrepo"; exit}')
-  [[ -z "$url" && "$remote" == "flathub" ]] && url="https://dl.flathub.org/repo/flathub.flatpakrepo"
-  printf '%s' "$url"
+  local remote="$1" directory descriptor
+  for directory in "${FLATPAK_CONFIG_DIR:-/etc/flatpak}/remotes.d" \
+                   "${FLATPAK_DATA_DIR:-/usr/share/flatpak}/remotes.d"; do
+    descriptor="$directory/$remote.flatpakrepo"
+    if [[ -r "$descriptor" ]]; then
+      printf '%s' "$descriptor"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# vráti URL a možnosti existujúceho systémového remote
+get_system_remote() {
+  local remote="$1"
+  flatpak remotes --system --show-disabled --columns=name,url,options |
+    awk -F '\t' -v r="$remote" '$1 == r { print; found=1; exit } END { exit !found }'
+}
+
+# vráti keyring systémového remote, ak existuje
+get_system_remote_keyring() {
+  local remote="$1" installation keyring
+  while IFS= read -r installation; do
+    [[ -n "$installation" ]] || continue
+    keyring="${installation%/}/repo/$remote.trustedkeys.gpg"
+    if [[ -r "$keyring" ]]; then
+      printf '%s' "$keyring"
+      return 0
+    fi
+  done < <(flatpak --installations)
+  return 1
+}
+
+remote_has_option() {
+  local options="${1// /}"
+  [[ ",$options," == *",$2,"* ]]
 }
 
 # pridá remote do používateľskej inštalácie (ak chýba)
 ensure_user_remote() {
-  local remote="$1"
-  if flatpak remotes --user | awk '{print $1}' | grep -qx "$remote"; then
+  local remote="$1" descriptor config configured_name repo_url options keyring
+  local -a command=(flatpak remote-add --user --if-not-exists)
+  if flatpak remotes --user --columns=name | grep -Fxq "$remote"; then
     return 0
   fi
-  local repo_url; repo_url=$(get_flatpakrepo "$remote")
-  if [[ -z "$repo_url" ]]; then
-    log "⚠️  .flatpakrepo pre remote '$remote' sa nenašlo – migrácia sa preskočí."
+
+  if descriptor=$(get_flatpakrepo "$remote"); then
+    log "➕  Pridávam remote '$remote' z $descriptor"
+    run "${command[@]}" --from "$remote" "$descriptor"
+    return
+  fi
+
+  if ! config=$(get_system_remote "$remote"); then
+    log "⚠️  Konfigurácia remote '$remote' sa nenašla – migrácia sa preskočí."
     return 1
   fi
-  log "➕  Pridávam remote '$remote' z $repo_url"
-  run flatpak remote-add --user --if-not-exists "$remote" --from "$repo_url"
+  IFS=$'\t' read -r configured_name repo_url options <<< "$config"
+  if [[ "$configured_name" != "$remote" || -z "$repo_url" ]]; then
+    log "⚠️  Konfigurácia remote '$remote' je neplatná – migrácia sa preskočí."
+    return 1
+  fi
+
+  if remote_has_option "$options" no-gpg-verify; then
+    command+=(--no-gpg-verify)
+  elif keyring=$(get_system_remote_keyring "$remote"); then
+    command+=(--gpg-import="$keyring")
+  else
+    log "⚠️  Podpisový kľúč remote '$remote' sa nenašiel – migrácia sa preskočí."
+    return 1
+  fi
+  remote_has_option "$options" no-enumerate && command+=(--no-enumerate)
+  remote_has_option "$options" no-use-for-deps && command+=(--no-use-for-deps)
+
+  log "➕  Kopírujem systémový remote '$remote' ($repo_url)"
+  run "${command[@]}" "$remote" "$repo_url"
 }
 
 ################################ 1. Zoznam balíkov ################################
