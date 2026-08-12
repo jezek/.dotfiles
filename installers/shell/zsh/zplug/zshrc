@@ -47,3 +47,13 @@ stty -ixon
 # Change color of comments to make them visible ob black transparent background
 typeset -A ZSH_HIGHLIGHT_STYLES
 ZSH_HIGHLIGHT_STYLES[comment]='fg=#545652'
+
+# Inlude all *.sh files in .dotfiles shell zshrc.d.
+zshrcDir="$HOME/.dotfiles/shell/zshrc.d"
+if [ -d $zshrcDir ]; then
+	for i in $zshrcDir/*.sh; do
+		if [ -r $i ]; then
+			. $i
+		fi
+	done
+fi
