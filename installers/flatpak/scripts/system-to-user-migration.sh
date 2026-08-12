@@ -42,7 +42,7 @@ ensure_user_remote() {
 
 ################################ 1. Zoznam balíkov ################################
 log "📋 Získavam zoznam systémových balíkov…"
-mapfile -t refs < <(flatpak list --system --columns=ref,origin | tail -n +2)
+mapfile -t refs < <(flatpak list --system --columns=ref,origin)
 log "🔍 Nájdených refs: ${#refs[@]}"
 if (( ${#refs[@]} == 0 )); then
   log "ℹ️  Žiadne systémové Flatpak balíky na migráciu – končím."
@@ -59,7 +59,11 @@ for entry in "${refs[@]}"; do
 
   if (( AUTO_ALL == 0 )); then
     printf "\nPremigrovať balík %s (remote: %s)? [Y/n/a/q] " "$ref" "$origin"
-    read -r answer
+    if ! read -r answer; then
+      printf '\n'
+      log "❌  Vstup bol ukončený – migráciu ruším."
+      exit 1
+    fi
     answer=${answer,,}
     [[ -z "$answer" ]] && answer="y"
     case "$answer" in
