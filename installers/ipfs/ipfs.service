@@ -1,0 +1,14 @@
+[Unit]
+Description=Kubo IPFS daemon
+Documentation=https://docs.ipfs.tech/
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+ExecStart=/usr/bin/env ipfs daemon --enable-gc
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

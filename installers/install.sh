@@ -646,7 +646,7 @@ plugins=(\
 	sticky-keys git \
 	shell/bash shell/zsh/zplug \
 	vim vim/plug \
-	golang \
+	golang ipfs \
 	mc audacious \
 	fingerprint \
 	backup \
