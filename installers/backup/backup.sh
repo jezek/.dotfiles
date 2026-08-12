@@ -92,8 +92,15 @@ while read -r i; do
 	src=${fields[0]}
 	dst=${fields[1]}
 
-	if [[ "$dst" == "$backupSourceDirectory"/* ]]; then
+	if [ "$backupSourceDirectory" = / ] && [[ "$dst" == /* ]] && [ "$dst" != / ]; then
+		relativeMountpoint="${dst#/}"
+	elif [[ "$dst" == "$backupSourceDirectory"/* ]]; then
 		relativeMountpoint="${dst#"$backupSourceDirectory"/}"
+	else
+		continue
+	fi
+
+	if [ -n "$relativeMountpoint" ]; then
 		found=0
 		for exclude in "${backupExcludes[@]}"; do
 			excludePath="${exclude#- /}"
