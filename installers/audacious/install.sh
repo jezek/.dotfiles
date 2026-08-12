@@ -5,7 +5,7 @@ fi
 
 echo -e "Installing audacious music player with plugins"
 
-if .installCommand audacious 'audacious/audacious-plugins'; then
+if .installCommand audacious && .installPkg audacious-plugins; then
 	echo -e "${cCmd}audacious${cNone} with plugins installed"
 else
 	[ "$1" = plugin ] && return 1
@@ -26,9 +26,13 @@ if [ -f $dotAudaConfig ]; then
 	.run "cp -uvib $dotAudaConfig $audaConfig"
 
 	if [ "$installed" = "1" ]; then
-		#TODO mimeapps.list text replace to .config/mimeapps.list
-		echo -e "associate audacious with audio files (from ${cFile}$dotfilesDir/audacious/mimeapps.list${cNone} to ${cFile}$HOME/.config/mimeapps.list${cNone}"
-		read
+		if .check_yes_no "Associate Audacious with the configured audio MIME types?" && .needCommand xdg-mime/xdg-utils; then
+			while IFS='=' read -r mimeType desktopFile; do
+				case "$mimeType" in
+					audio/*) .run "xdg-mime default '$desktopFile' '$mimeType'" ;;
+				esac
+			done < "$dotfilesDir/installers/audacious/mimeapps.list"
+		fi
 	fi
 	unset installed
 fi

@@ -14,8 +14,6 @@ fi
 dotMcini="$dotfilesDir/installers/mc/mc.ini"
 mcini="$HOME/.config/mc/ini"
 
-#TODO use helper function with backup like .hardlink
-if [ -f $dotMcini ]; then
-	.run "cp -vib $dotMcini $mcini"
+if [ -f "$dotMcini" ]; then
+	.copyConfig "$dotMcini" "$mcini"
 fi
-

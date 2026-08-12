@@ -16,7 +16,7 @@ if ! .check_yes_no "Install and run power saving manager - tlp?"; then
 fi
 
 
-if .installCommand tlp "tlp/tlp-rdw"; then
+if .installCommand tlp && .installPkg tlp-rdw; then
 	echo -e "Command ${cCmd}tlp${cNone} installed"
 else
 	[ "$1" = plugin ] && return 1
