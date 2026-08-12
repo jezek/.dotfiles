@@ -3,9 +3,9 @@ if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
 
-#TODO git credentials helper?
-#[credential]
-#	helper = /usr/share/doc/git/contrib/credential/gnome-keyring/git-credential-gnome-keyring
+# SSH remotes are preferred by this configuration. Do not enable plaintext
+# credential storage globally; HTTPS users can opt into an installed secure
+# libsecret or OAuth helper through `git config --global credential.helper`.
 
 if .installCommand git; then
 	echo -e "Command ${cCmd}git${cNone} installed"

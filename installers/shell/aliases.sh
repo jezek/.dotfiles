@@ -10,7 +10,7 @@ alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo
 
 
 is(){
-	type $1 >/dev/null 2>&1
+	type "$1" >/dev/null 2>&1
 }
 
 uopen() {
@@ -35,19 +35,23 @@ alias cl=cdls
 mkdircd () { mkdir -p "$@" && eval cd "\"\$$#\""; }
 alias md=mkdircd
 
-#TODO find this alias a propper place, or check for git command
-alias gsba='git show-branch -a --color=always | less -r -X'
+if is git && is less; then
+	alias gsba='git show-branch -a --color=always | less -r -X'
+fi
 
-#TODO find this alias a propper place, or check for curl command
 # QR code generation
 qr () {
-printf "$@" | curl -F-=\<- qrenco.de
+	if ! is curl; then
+		echo "qr requires curl" >&2
+		return 127
+	fi
+	printf '%s' "$*" | curl --fail --show-error --form '-=<-' https://qrenco.de
 }
 
-
-#TODO find this alias a propper place, or check for curl command
 # Delete to trash.
-alias rmt='gio trash'
+if is gio; then
+	alias rmt='gio trash'
+fi
 
 # enable color support of ls and also add handy aliases
 if [ -x /usr/bin/dircolors ]; then
