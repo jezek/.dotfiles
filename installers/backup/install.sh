@@ -47,10 +47,13 @@ sshconn="ssh -t -o ControlPath=$HOME/.ssh/connection_pipe_%h_%p_%r -o ControlMas
 			fi
 		fi
 	else
-		if .run "$sshconn $remote 'exit'"; then
-			if ! .run "$sshconn $remote '[ -d \""$directory"\" ]'"; then
+		local remoteArg directoryArg
+		printf -v remoteArg '%q' "$remote"
+		printf -v directoryArg '%q' "$directory"
+		if .run "$sshconn $remoteArg exit"; then
+			if ! .run "$sshconn $remoteArg test -d $directoryArg"; then
 				if .check_yes_no "Remote \"$remote\" destination directory \"$cFile${directory}$cNone\" does not exist. Create?"; then
-					if ! .run "$sshconn $remote 'mkdir -p \""$directory"\" ]'"; then
+					if ! .run "$sshconn $remoteArg mkdir -p -- $directoryArg"; then
 						(>&2 echo -e $cErr"Backup destination check error: creating remote \"$cNone${remote}$cErr\" destination directory \"$cFile${directory}$cErr\" failed"$cNone)
 						return 255
 					fi
@@ -90,30 +93,33 @@ while true; do # ask for backup destination [[user@]hostname:]path/to/backup/dir
 			;;
 	esac
 
-	prefix=${dest%%":"*} # everything before ":"
-	suffix=${dest#*":"} # everything after ":"
-	#TODO bug if dest == "jezek.sk:jezek.sk"
+	backupDestDirectory=$dest
+	backupDestRemote=""
+	if [[ "$dest" == *:* ]]; then
+		prefix=${dest%%:*} # everything before the first ":"
+		suffix=${dest#*:} # everything after the first ":"
+		if [[ ! "$prefix" =~ ^([A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$ ]] || [ -z "$suffix" ] || [[ "$suffix" == *"'"* ]]; then
+			echo -e $cErr"Invalid remote backup destination: "$cNone${dest}
+			echo
+			continue
+		fi
 
-	backupDestDirectory=$suffix
-	if [ ! "${prefix}" = ${suffix} ]; then # ":" in dest, $prefix is remote host
-		#TODO check if auth needed
-		if .check_yes_no "Do you want to send your ssh keys to remote host fo key-based authentication?"; then 
-			# send keys to remote
-			if ! .run "ssh-copy-id -n $prefix"; then
-				echo -e $cErr"Failed to send ssh keys to remote: "$cNone${prefix}
-				echo
-				continue
-			fi
-		else
-			# check for host ssh conn can be opened and if yes, create master connection
-			if ! .run "$sshconn $prefix 'exit'"; then
-				echo -e $cErr"Failed to connect with ssh to remote: "$cNone${prefix}
+		backupDestRemote=$prefix
+		backupDestDirectory=$suffix
+		printf -v remoteArg '%q' "$backupDestRemote"
+		if ! .run "$sshconn -o BatchMode=yes $remoteArg exit"; then
+			if .check_yes_no "Key-based authentication is not available. Send your SSH key to ${backupDestRemote}?"; then
+				if ! .run "ssh-copy-id $remoteArg" || ! .run "$sshconn -o BatchMode=yes $remoteArg exit"; then
+					echo -e $cErr"Failed to configure key-based SSH access to: "$cNone${backupDestRemote}
+					echo
+					continue
+				fi
+			elif ! .run "$sshconn $remoteArg exit"; then
+				echo -e $cErr"Failed to connect with SSH to remote: "$cNone${backupDestRemote}
 				echo
 				continue
 			fi
 		fi
-		
-		backupDestRemote=$prefix
 	fi
 
 	echo -e "Checking if destination input is valid: remote=$backupDestRemote,dir=$backupDestDirectory"
@@ -221,7 +227,15 @@ if .check_yes_no "Search for \".cache\" directories in backup source directory a
 	unset caches line
 	echo
 fi
-#TODO ask if exclude Downloads, Music, Videos... or figure out, how to arrange home dirs in devices
+if [ "$backupSourceDirectory" = "$HOME" ]; then
+	commonHomeDirectory=""
+	for commonHomeDirectory in Downloads Music Videos; do
+		if [ -d "$backupSourceDirectory/$commonHomeDirectory" ] && .check_yes_no "Exclude $cFile$commonHomeDirectory$cNone from this backup?" n; then
+			backupExcludes+=("- /${commonHomeDirectory}/")
+		fi
+	done
+	unset commonHomeDirectory
+fi
 
 echo -e "Deploying backup configuration:"
 
