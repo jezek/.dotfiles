@@ -2,7 +2,6 @@
 if [ -z ${dotfilesDir+x} ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
-#TODO sh: line 1: make: command not found
 
 if ! .isCmd vim; then
 	[ "$1" = plugin ] && return
@@ -31,18 +30,32 @@ fi
 
 .hardlink "$dotfilesDir/installers/vim/plug/vimrc" "$HOME/.vimrc"
 if [ "$installed" = "1" ]; then
-	.run "vim +PlugInstall +qall"
-fi
-
-# TODO first try package manager python3-pynvim, then pipx and not pip3
-if ! .isCmd pip3; then
-	echo -e $cWarn"Using deoplete in vim requires pyvim package."$cNone" To install, first install "$cCmd"pip3"$cNone" and run:"
-	echo -e "pip3 install --user pynvim"
-else
-	if ! .run "pip3 list | grep pynvim"; then
-		.run "pip3 install --user pynvim"
+	if .needCommand make; then
+		.run "vim +PlugInstall +qall"
 	else
-		.run "pip3 install --user --upgrade pynvim"
+		echo -e $cErr"Vim plugins require ${cCmd}make${cErr}; plugin installation skipped."$cNone
 	fi
 fi
+unset installed
 
+if ! .isCmd python3; then
+	echo -e $cWarn"Using deoplete in Vim requires Python 3 and pynvim."$cNone
+	return 0 2>/dev/null || exit 0
+fi
+
+if ! python3 -c 'import pynvim' >/dev/null 2>&1; then
+	case "$(.packageManager)" in
+		apt) .installPkg python3-pynvim ;;
+		pacman) .installPkg python-pynvim ;;
+	esac
+fi
+
+if ! python3 -c 'import pynvim' >/dev/null 2>&1; then
+	pynvimVenv="$HOME/.local/share/vim/pynvim-venv"
+	if python3 -m venv "$pynvimVenv" && "$pynvimVenv/bin/python" -m pip install --upgrade pynvim; then
+		echo -e "Installed pynvim into isolated environment ${cFile}${pynvimVenv}${cNone}."
+	else
+		echo -e $cWarn"Could not install pynvim; deoplete completion will be unavailable."$cNone
+	fi
+	unset pynvimVenv
+fi

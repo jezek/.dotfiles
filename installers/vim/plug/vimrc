@@ -7,7 +7,6 @@ Plug 'fatih/vim-go', { 'for': 'go' }
 " Plug 'Yggdroot/LeaderF'
 Plug 'majutsushi/tagbar'
 Plug 'AndrewRadev/splitjoin.vim'
-"TODO try https://ycm-core.github.io/YouCompleteMe/
 Plug 'Shougo/deoplete.nvim' | Plug 'roxma/nvim-yarp' | Plug 'roxma/vim-hug-neovim-rpc'
 Plug 'deoplete-plugins/deoplete-go', { 'do': 'make' }
 Plug 'Shougo/neosnippet' | Plug 'Shougo/neosnippet-snippets'
@@ -23,7 +22,7 @@ Plug 'vim-scripts/indentpython.vim'
 Plug 'nvie/vim-flake8'
 " https://github.com/simeji/winresizer
 " https://github.com/moll/vim-bbye
-"TODO try https://github.com/tpope/vim-surround
+Plug 'tpope/vim-surround'
 call plug#end()
 
 """"""""""""""""""""""
@@ -41,6 +40,9 @@ set ttyscroll=3                 " Speedup scrolling
 set laststatus=2                " Show status line always
 set encoding=utf-8              " Set default encoding to UTF-8
 set fileencodings=ucs-bom,utf-8,windows-1250,default,latin1
+if executable(expand('~/.local/share/vim/pynvim-venv/bin/python'))
+	let g:python3_host_prog = expand('~/.local/share/vim/pynvim-venv/bin/python')
+endif
 set autoread                    " Automatically read changed files
 set autoindent                  " Enable Autoindent
 set shiftwidth=2                " num of spaces using for autoindent
@@ -415,7 +417,7 @@ nmap <leader>e :Errors<cr>
 set guifont=Source\ Code\ Pro\ 10
 
 " don't leave vim output in shell after exit
-"TODO try arrow fix with this patch & see if it works
+" The linux console terminfo has no alternate-screen capabilities.
 if &term =~ "linux"
 	let &t_ti = "\<Esc>[?47h"
 	let &t_te = "\<Esc>[?47l"
