@@ -52,6 +52,23 @@ dominantColor=$($dotWallpaperChangerInstallDir"/dcolors.sh" -k 1 -f hex "${picTo
 echo "Setting dash-to-dock background-color to picture's dominant color: "${dominantColor}
 gsettings set org.gnome.shell.extensions.dash-to-dock background-color "${dominantColor}"
 
+# Set the closest standard GNOME accent color. Failure is non-fatal because
+# older GNOME versions do not provide the accent-color setting.
+if gnomeAccent=$($dotWallpaperChangerInstallDir"/getGnomeAccent.sh" \
+		"${picToUse}" "${dominantColor}"); then
+	currentGnomeAccent=$(gsettings get org.gnome.desktop.interface accent-color 2>/dev/null)
+	currentGnomeAccent=${currentGnomeAccent#\'}
+	currentGnomeAccent=${currentGnomeAccent%\'}
+	if [ "$currentGnomeAccent" != "$gnomeAccent" ]; then
+		echo "Setting GNOME accent color to: ${gnomeAccent}"
+		if ! gsettings set org.gnome.desktop.interface accent-color "$gnomeAccent"; then
+			1>&2 echo -e $cErr"Failed to set GNOME accent color"$cNone
+		fi
+	fi
+else
+	1>&2 echo "GNOME accent color is unavailable; leaving it unchanged"
+fi
+
 # Darken dominant color if needed.
 darkenediDominantColor=$($dotWallpaperChangerInstallDir"/darken.sh" 20 "${dominantColor}")
 echo "Darkened dominat color: $darkenediDominantColor"
