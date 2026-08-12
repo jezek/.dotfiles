@@ -23,7 +23,7 @@ set $terminal footclient
 set $screenshot grim ~/Pictures/screenshots/screenshot-$(date +"%Y-%m-%d-%H%M%S").png
 set $screenclip slurp | grim -g - ~/Pictures/screenshots/screenclip-$(date +"%Y-%m-%d-%H%M%S").png
 
-set $term_float_portrait $term --app-id=floating_shell_portrait
+set $term_float_portrait $terminal --app-id=floating_shell_portrait
 set $help $term_float_portrait cat $HOME/.config/sway/help.txt
 # shortcuts
 
@@ -115,6 +115,7 @@ bindsym $mod+Shift+c reload
 bindsym $mod+Shift+q kill
 bindsym $mod+d exec $menu
 bindsym $mod+Space exec $menu
+bindsym $mod+h exec $help
 bindsym $mod+Return exec $terminal
 bindsym $mod+Shift+e exec swaynag -t warning -m 'You pressed the exit shortcut. Do you really want to exit sway? This will end your Wayland session.' -B 'Yes, exit sway' 'swaymsg exit'
 bindsym $mod+Shift+Return exec $browser

@@ -1,1 +1,27 @@
-todo
+Sway shortcuts (Super = Mod4)
+
+Super + arrows              focus window
+Super + Shift + arrows      move window
+Super + 1..0                workspace 1..10
+Super + Ctrl + 1..0         workspace 11..20
+Super + Shift + 1..0        move to workspace
+
+Super + b / v               horizontal / vertical split
+Super + f                   fullscreen
+Super + Shift + Space       toggle floating
+Super + a                   focus parent
+Super + r                   resize mode (arrows, Enter/Escape)
+
+Super + d / Space           application launcher
+Super + Return              terminal
+Super + Shift + Return      browser
+Super + h                   this help
+Super + Shift + q           close window
+Super + Shift + c           reload Sway
+Super + Shift + e           exit Sway
+
+Super + F7 / F8             brightness
+Super + Print               screenshot
+Super + Shift + Print       select and capture area
+Volume keys                 mute / volume
+Power key                   logout menu
