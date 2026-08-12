@@ -426,7 +426,15 @@ if [ "$btrfsBackup" = 1 ]; then
 		case "${backupState[status]}" in
 			cleanup_pending)
 				if snapshot_exists; then
-					if ! verify_btrfs_snapshot || ! sudo btrfs subvolume delete "$btrfsSnapshotPath"; then
+					if ! verify_btrfs_snapshot; then
+						echo -e "$cErr""Could not clean up completed snapshot: "$cFile"${btrfsSnapshotPath}"$cNone
+						exit 6
+					fi
+					if [ "${backupState[snapshot_uuid]}" != "$btrfsSnapshotUuid" ]; then
+						echo -e "$cErr""Completed Btrfs snapshot UUID does not match saved state"$cNone
+						exit 6
+					fi
+					if ! sudo btrfs subvolume delete "$btrfsSnapshotPath"; then
 						echo -e "$cErr""Could not clean up completed snapshot: "$cFile"${btrfsSnapshotPath}"$cNone
 						exit 6
 					fi
