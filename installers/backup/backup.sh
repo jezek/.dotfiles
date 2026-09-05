@@ -169,13 +169,56 @@ runtimeExcludesFile="${dotBackupDir}/.exclude.runtime"
 runtimeExclusionFileName="${runtimeExcludesFile##*/}"
 trap 'rm -f -- "$runtimeExcludesFile"' EXIT
 
+# Questions are local to backup: never consume piped input as an answer.
+ask_backup_source() {
+	local answer
+	if [ ! -t 0 ]; then
+		printf '%s [Y/n/q]: Yes (no TTY)\n' "$1"
+		return 0
+	fi
+	while :; do
+		printf '%s [Y/n/q]: ' "$1"
+		if ! IFS= read -r -n1 answer; then
+			printf '\nInput closed; backup cancelled.\n'
+			exit 130
+		fi
+		printf '\n'
+		case "$answer" in
+			''|y|Y) return 0 ;;
+			n|N) return 1 ;;
+			q|Q)
+				if [ -f "$stateFile" ]; then
+					discard_pending_snapshot || exit 6
+				fi
+				echo 'Backup cancelled; temporary backup files cleaned up.'
+				exit 130
+				;;
+			*) echo 'Please answer y, n, or q to quit.' ;;
+		esac
+	done
+}
+
+backup_privileged() {
+	if [ "$EUID" = 0 ]; then
+		"$@"
+	elif [ -t 0 ]; then
+		sudo "$@"
+	else
+		sudo -n "$@"
+	fi
+}
+
+snapshotKind=owned
+snapshotFsUuid=''
+snapshotRelativePath=''
+
 declare -A backupState=()
 load_backup_state() {
 	local line key value
 	backupState=()
 	while IFS=$'\t' read -r key value || [ -n "$key$value" ]; do
 		case "$key" in
-			version|status|fingerprint|source|dest_remote|dest_directory|subvolume_root|subvolume_uuid|source_relative|snapshot_path|snapshot_uuid) ;;
+			version|status|fingerprint|source|dest_remote|dest_directory|subvolume_root|subvolume_uuid|source_relative|snapshot_path|snapshot_uuid|snapshot_kind|snapshot_fs_uuid|snapshot_relative_path) ;;
 			*)
 				echo -e "$cErr""Invalid Btrfs backup state key: "$cNone"$key"
 				return 1
@@ -194,16 +237,31 @@ load_backup_state() {
 			return 1
 		fi
 	done
-	if [ "${backupState[version]}" != 1 ] || [[ ! "${backupState[status]}" =~ ^(creating|ready|cleanup_pending)$ ]]; then
+	if [[ ! "${backupState[version]}" =~ ^[12]$ ]] || [[ ! "${backupState[status]}" =~ ^(creating|ready|cleanup_pending)$ ]]; then
 		echo -e "$cErr""Unsupported or invalid Btrfs backup state"$cNone
 		return 1
+	fi
+	if [ "${backupState[version]}" = 1 ]; then
+		backupState[snapshot_kind]=owned
+		backupState[snapshot_fs_uuid]="$btrfsSourceFsUuid"
+		backupState[snapshot_relative_path]=''
+	else
+		for key in snapshot_kind snapshot_fs_uuid snapshot_relative_path; do
+			[[ -n "${backupState[$key]+x}" ]] || return 1
+		done
+		[[ "${backupState[snapshot_kind]}" =~ ^(owned|timeshift)$ ]] || return 1
+		[ "${backupState[snapshot_fs_uuid]}" = "$btrfsSourceFsUuid" ] || return 1
+		if [ "${backupState[snapshot_kind]}" = timeshift ]; then
+			[[ "${backupState[snapshot_relative_path]}" =~ ^timeshift-btrfs/snapshots/[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}/(@|@home)$ ]] || return 1
+			[ "${backupState[status]}" != creating ] || return 1
+		fi
 	fi
 }
 
 write_backup_state() {
 	local status="$1" snapshotUuid="${2:--}" tmp="${stateFile}.tmp.$$"
 	if ! (umask 077; {
-		printf 'version\t1\n'
+		printf 'version\t2\n'
 		printf 'status\t%s\n' "$status"
 		printf 'fingerprint\t%s\n' "$backupFingerprint"
 		printf 'source\t%s\n' "$backupSourceDirectory"
@@ -214,6 +272,9 @@ write_backup_state() {
 		printf 'source_relative\t%s\n' "$btrfsSourceRelative"
 		printf 'snapshot_path\t%s\n' "$btrfsSnapshotPath"
 		printf 'snapshot_uuid\t%s\n' "$snapshotUuid"
+		printf 'snapshot_kind\t%s\n' "$snapshotKind"
+		printf 'snapshot_fs_uuid\t%s\n' "$snapshotFsUuid"
+		printf 'snapshot_relative_path\t%s\n' "$snapshotRelativePath"
 	} > "$tmp"); then
 		rm -f -- "$tmp"
 		return 1
@@ -226,12 +287,13 @@ write_backup_state() {
 
 btrfs_show_value() {
 	local path="$1" field="$2" details
-	if ! details="$(sudo btrfs subvolume show "$path")"; then
+	if ! details="$(backup_privileged btrfs subvolume show "$path")"; then
 		return 1
 	fi
 	case "$field" in
 		uuid) awk '$1 == "UUID:" { print $2; exit }' <<< "$details" ;;
 		parent_uuid) awk '$1 == "Parent" && $2 == "UUID:" { print $3; exit }' <<< "$details" ;;
+		id) awk '$1 == "Subvolume" && $2 == "ID:" { print $3; exit }' <<< "$details" ;;
 		*) return 1 ;;
 	esac
 }
@@ -240,6 +302,8 @@ find_btrfs_subvolume_root() {
 	local candidate="$backupSourceDirectory" inode parent
 	btrfsMountTarget="$(findmnt -T "$backupSourceDirectory" -n -o TARGET)" || return 1
 	btrfsMountFsRoot="$(findmnt -T "$backupSourceDirectory" -n -o FSROOT)" || return 1
+	btrfsSourceFsUuid="$(findmnt -T "$backupSourceDirectory" -n -o UUID)" || return 1
+	[ -n "$btrfsSourceFsUuid" ] || return 1
 
 	while :; do
 		inode="$(stat -c '%i' -- "$candidate")" || return 1
@@ -263,15 +327,13 @@ find_btrfs_subvolume_root() {
 	fi
 	btrfsSubvolumeTopPath="${btrfsSubvolumeTopPath#/}"
 
-	if ! btrfsSubvolumeUuid="$(btrfs_show_value "$btrfsSubvolumeRoot" uuid)" || [ -z "$btrfsSubvolumeUuid" ]; then
-		return 1
-	fi
-
 	local snapshotKey
 	snapshotKey="$(printf '%s' "$dotBackupDir" | sha256sum)" || return 1
 	snapshotKey="${snapshotKey%% *}"
 	snapshotKey="${snapshotKey:0:16}"
 	btrfsSnapshotPath="$(join_path "$btrfsSubvolumeRoot" ".dotfiles-backup-snapshot-$(id -u)-${snapshotKey}")"
+	ownedSnapshotPath="$btrfsSnapshotPath"
+	snapshotFsUuid="$btrfsSourceFsUuid"
 }
 
 exclude_covers_path() {
@@ -296,7 +358,7 @@ exclude_covers_path() {
 check_nested_btrfs_subvolumes() {
 	local output line topPath relativeToRoot nestedPath relativeToSource
 	local -a missing=()
-	if ! output="$(sudo btrfs subvolume list "$btrfsSubvolumeRoot")"; then
+	if ! output="$(backup_privileged btrfs subvolume list "$btrfsSubvolumeRoot")"; then
 		echo -e "$cErr""Failed to list nested Btrfs subvolumes"$cNone
 		return 1
 	fi
@@ -312,7 +374,7 @@ check_nested_btrfs_subvolumes() {
 			continue
 		fi
 		nestedPath="$(join_path "$btrfsSubvolumeRoot" "$relativeToRoot")"
-		[ "$nestedPath" = "$btrfsSnapshotPath" ] && continue
+		[ "$nestedPath" = "$ownedSnapshotPath" ] && continue
 		if ! relativeToSource="$(path_relative_to "$backupSourceDirectory" "$nestedPath")"; then
 			continue
 		fi
@@ -331,7 +393,7 @@ check_nested_btrfs_subvolumes() {
 }
 
 snapshot_exists() {
-	sudo test -e "$btrfsSnapshotPath"
+	backup_privileged test -e "$btrfsSnapshotPath"
 }
 
 verify_btrfs_snapshot() {
@@ -340,7 +402,7 @@ verify_btrfs_snapshot() {
 		echo -e "$cErr""Existing snapshot does not belong to the configured source: "$cFile"${btrfsSnapshotPath}"$cNone
 		return 1
 	fi
-	if ! readonly="$(sudo btrfs property get -ts "$btrfsSnapshotPath" ro)" || [ "$readonly" != ro=true ]; then
+	if ! readonly="$(backup_privileged btrfs property get -ts "$btrfsSnapshotPath" ro)" || [ "$readonly" != ro=true ]; then
 		echo -e "$cErr""Existing snapshot is not read-only: "$cFile"${btrfsSnapshotPath}"$cNone
 		return 1
 	fi
@@ -360,11 +422,169 @@ validate_loaded_state() {
 	fi
 	if [ "${backupState[subvolume_root]}" != "$btrfsSubvolumeRoot" ] || \
 		[ "${backupState[subvolume_uuid]}" != "$btrfsSubvolumeUuid" ] || \
-		[ "${backupState[source_relative]}" != "$btrfsSourceRelative" ] || \
-		[ "${backupState[snapshot_path]}" != "$btrfsSnapshotPath" ]; then
+		[ "${backupState[source_relative]}" != "$btrfsSourceRelative" ]; then
 		echo -e "$cErr""Btrfs layout no longer matches the pending snapshot state."$cNone
 		return 1
 	fi
+	if [ "${backupState[snapshot_kind]}" = owned ] && [ "${backupState[snapshot_path]}" != "$ownedSnapshotPath" ]; then
+		echo 'Pending snapshot path does not match the managed backup path.'
+		return 1
+	fi
+}
+
+# Use mounted filesystem roots only; never invoke Timeshift or mount devices.
+load_timeshift_mounts() {
+	local mounts target uuid
+	timeshiftMountPaths=()
+	timeshiftMountUuids=()
+	if ! command -v jq >/dev/null 2>&1; then
+		echo 'Cannot search Timeshift snapshots: jq is not installed.'
+		return 1
+	fi
+	if ! mounts="$(findmnt --json --list -t btrfs -o TARGET,UUID,FSROOT)"; then
+		echo 'Cannot list mounted Btrfs filesystems for Timeshift.'
+		return 1
+	fi
+	if ! jq -e '.filesystems | type == "array"' >/dev/null <<< "$mounts"; then
+		return 1
+	fi
+	while IFS= read -r -d '' target && IFS= read -r -d '' uuid; do
+		timeshiftMountPaths+=("$target")
+		timeshiftMountUuids+=("$uuid")
+	done < <(jq -j '.filesystems[] | select(.fsroot == "/" and (.uuid | type == "string")) |
+		.target, "\u0000", .uuid, "\u0000"' <<< "$mounts")
+}
+
+find_timeshift_snapshot() {
+	local mount info stamp record created fsUuid subvolId index candidate repositoryFound=0
+	local newest=-1 selected='' selectedRelative='' selectedId=''
+	load_timeshift_mounts || return 1
+	for mount in "${timeshiftMountPaths[@]}"; do
+		[ -d "${mount%/}/timeshift-btrfs/snapshots" ] || continue
+		repositoryFound=1
+		for info in "${mount%/}"/timeshift-btrfs/snapshots/*/info.json; do
+			[ -e "$info" ] || continue
+			if ! jq -e 'type == "object"' "$info" >/dev/null 2>&1; then
+				printf 'Skipping unreadable or invalid Timeshift metadata: %s\n' "$info"
+				continue
+			fi
+			stamp="${info%/info.json}"
+			stamp="${stamp##*/}"
+			[[ "$stamp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] || continue
+			[ ! -e "${info%/info.json}/delete" ] || continue
+			if ! record="$(jq -er --arg name "$btrfsSubvolumeTopPath" '
+				select(.type == "btrfs" and .comments == "backup") |
+				select($name == "@" or $name == "@home") |
+				select(.subvolumes[$name][0] == $name) |
+				select((.created | tostring) | test("^[0-9]{1,12}$")) |
+				select((.subvolumes[$name][1] | tostring) | test("^[0-9]+$")) |
+				[(.created | tonumber), .subvolumes[$name][4], .subvolumes[$name][1]] | @tsv
+			' "$info")"; then
+				continue
+			fi
+			IFS=$'\t' read -r created fsUuid subvolId <<< "$record"
+			[ "$fsUuid" = "$btrfsSourceFsUuid" ] || continue
+			local available=0
+			for index in "${!timeshiftMountPaths[@]}"; do
+				[ "${timeshiftMountUuids[$index]}" = "$fsUuid" ] || continue
+				candidate="${timeshiftMountPaths[$index]%/}/timeshift-btrfs/snapshots/$stamp/$btrfsSubvolumeTopPath"
+				[ -d "$(join_path "$candidate" "$btrfsSourceRelative")" ] || continue
+				available=1
+				if (( created > newest )); then
+					newest="$created"
+					selected="$candidate"
+					selectedRelative="timeshift-btrfs/snapshots/$stamp/$btrfsSubvolumeTopPath"
+					selectedId="$subvolId"
+				fi
+			done
+			if [ "$available" = 0 ]; then
+				printf 'Skipping Timeshift snapshot %s: source directory is not available.\n' "$stamp"
+			fi
+		done
+	done
+	if [ -z "$selected" ]; then
+		if [ "$repositoryFound" = 0 ]; then
+			echo 'Timeshift is not running or its snapshot repository is not mounted.'
+		else
+			echo 'No available Timeshift snapshot with comment "backup" contains the configured source.'
+		fi
+		return 1
+	fi
+	btrfsSnapshotPath="$selected"
+	snapshotRelativePath="$selectedRelative"
+	timeshiftCandidateId="$selectedId"
+	printf 'Found Timeshift snapshot: %s\nSource: %s\n' "$selectedRelative" "$(join_path "$selected" "$btrfsSourceRelative")"
+}
+
+verify_timeshift_snapshot() {
+	local fsUuid
+	fsUuid="$(findmnt -T "$btrfsSnapshotPath" -n -o UUID)" || return 1
+	[ "$fsUuid" = "$snapshotFsUuid" ] || return 1
+	[ -d "$(join_path "$btrfsSnapshotPath" "$btrfsSourceRelative")" ] || return 1
+	btrfsSnapshotUuid="$(btrfs_show_value "$btrfsSnapshotPath" uuid)" || return 1
+	[ -n "$btrfsSnapshotUuid" ]
+}
+
+resolve_timeshift_snapshot() {
+	local index candidate
+	load_timeshift_mounts || return 1
+	[ "${snapshotRelativePath##*/}" = "$btrfsSubvolumeTopPath" ] || return 1
+	for index in "${!timeshiftMountPaths[@]}"; do
+		[ "${timeshiftMountUuids[$index]}" = "$snapshotFsUuid" ] || continue
+		candidate="${timeshiftMountPaths[$index]%/}/$snapshotRelativePath"
+		[ -d "$candidate" ] || continue
+		btrfsSnapshotPath="$candidate"
+		if verify_timeshift_snapshot && [ "$btrfsSnapshotUuid" = "${backupState[snapshot_uuid]}" ]; then
+			return 0
+		fi
+	done
+	echo 'Pending Timeshift snapshot is unavailable or its UUID changed; state retained.'
+	return 1
+}
+
+snapshot_tools_ready() {
+	command -v btrfs >/dev/null 2>&1 || { echo 'Btrfs snapshot operations require btrfs.'; return 1; }
+	btrfsSubvolumeUuid="$(btrfs_show_value "$btrfsSubvolumeRoot" uuid)" || return 1
+	[ -n "$btrfsSubvolumeUuid" ]
+}
+
+# Only owned snapshots can reach deletion. Persist cleanup before deleting so
+# an interrupted cleanup cannot turn into another run of the old backup.
+cleanup_snapshot() {
+	local expectedUuid="$btrfsSnapshotUuid"
+	if [ "$snapshotKind" = owned ]; then
+		[ "$btrfsSnapshotPath" = "$ownedSnapshotPath" ] || return 1
+		backup_privileged test -d "$btrfsSubvolumeRoot" || return 1
+		if snapshot_exists; then
+			verify_btrfs_snapshot || return 1
+			if [ "$expectedUuid" != "$btrfsSnapshotUuid" ]; then
+				echo 'Snapshot UUID changed; refusing to delete it.'
+				return 1
+			fi
+			backup_privileged btrfs subvolume delete "$btrfsSnapshotPath" || return 1
+			printf 'Removed temporary Btrfs snapshot: %s\n' "$btrfsSnapshotPath"
+		fi
+	fi
+	rm -f -- "$stateFile" || return 1
+	backupState=()
+}
+
+discard_pending_snapshot() {
+	# A crash after creation but before recording the UUID leaves status creating.
+	if [ "$snapshotKind" = owned ] && [ "${backupState[status]-}" = creating ]; then
+		if snapshot_exists; then
+			verify_btrfs_snapshot || return 1
+		fi
+	fi
+	write_backup_state cleanup_pending "$btrfsSnapshotUuid" && cleanup_snapshot
+}
+
+prepare_owned_snapshot() {
+	if ! snapshot_exists; then
+		check_nested_btrfs_subvolumes || return 1
+		backup_privileged btrfs subvolume snapshot -r "$btrfsSubvolumeRoot" "$btrfsSnapshotPath" || return 1
+	fi
+	verify_btrfs_snapshot && write_backup_state ready "$btrfsSnapshotUuid"
 }
 
 prepare_runtime_excludes() {
@@ -399,15 +619,6 @@ btrfsBackup=0
 backupRunSource="$backupSourceDirectory"
 
 if [ "$sourceFilesystem" = btrfs ]; then
-	btrfsBackup=1
-	if ! command -v btrfs >/dev/null 2>&1; then
-		echo -e "$cErr""Required command not found: "$cCmd"btrfs"$cNone
-		exit 4
-	fi
-	if ! sudo -v; then
-		echo -e "$cErr""Btrfs backup requires sudo for snapshot operations"$cNone
-		exit 6
-	fi
 	if ! find_btrfs_subvolume_root; then
 		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
 		exit 6
@@ -418,93 +629,79 @@ elif [ -f "$stateFile" ]; then
 	exit 6
 fi
 
-if [ "$btrfsBackup" = 1 ]; then
+if [ "$sourceFilesystem" = btrfs ]; then
 	if [ -f "$stateFile" ]; then
-		if ! load_backup_state || ! validate_loaded_state; then
+		if ! snapshot_tools_ready || ! load_backup_state || ! validate_loaded_state; then
+			echo 'Could not validate pending Btrfs backup state; state retained.'
 			exit 6
 		fi
-		case "${backupState[status]}" in
-			cleanup_pending)
-				if snapshot_exists; then
-					if ! verify_btrfs_snapshot; then
-						echo -e "$cErr""Could not clean up completed snapshot: "$cFile"${btrfsSnapshotPath}"$cNone
-						exit 6
-					fi
-					if [ "${backupState[snapshot_uuid]}" != "$btrfsSnapshotUuid" ]; then
-						echo -e "$cErr""Completed Btrfs snapshot UUID does not match saved state"$cNone
-						exit 6
-					fi
-					if ! sudo btrfs subvolume delete "$btrfsSnapshotPath"; then
-						echo -e "$cErr""Could not clean up completed snapshot: "$cFile"${btrfsSnapshotPath}"$cNone
-						exit 6
-					fi
-				fi
-				if ! rm -f -- "$stateFile"; then
-					echo -e "$cErr""Could not remove completed Btrfs backup state: "$cFile"${stateFile}"$cNone
-					exit 6
-				fi
-				backupState=()
-				;;
-			creating)
-				if snapshot_exists; then
-					if ! verify_btrfs_snapshot; then
-						exit 6
-					fi
-				else
-					if ! check_nested_btrfs_subvolumes || ! sudo btrfs subvolume snapshot -r "$btrfsSubvolumeRoot" "$btrfsSnapshotPath"; then
-						echo -e "$cErr""Could not create Btrfs snapshot"$cNone
-						exit 6
-					fi
-					if ! verify_btrfs_snapshot; then
-						exit 6
-					fi
-				fi
-				if ! write_backup_state ready "$btrfsSnapshotUuid"; then
-					echo -e "$cErr""Could not persist ready Btrfs snapshot state"$cNone
-					exit 6
-				fi
-				;;
-			ready)
-				if ! snapshot_exists || ! verify_btrfs_snapshot; then
-					echo -e "$cErr""Pending Btrfs snapshot is missing or invalid"$cNone
-					exit 6
-				fi
-				if [ "${backupState[snapshot_uuid]}" != "$btrfsSnapshotUuid" ]; then
-					echo -e "$cErr""Pending Btrfs snapshot UUID does not match saved state"$cNone
-					exit 6
-				fi
-				;;
-		esac
-	fi
-
-	if [ ! -f "$stateFile" ]; then
-		if snapshot_exists; then
-			echo -e "$cErr""An untracked snapshot already exists; refusing to reuse or delete it:"$cNone
-			echo -e "$cFile""${btrfsSnapshotPath}"$cNone
-			exit 6
-		fi
-		if ! check_nested_btrfs_subvolumes; then
-			exit 6
-		fi
-		if ! write_backup_state creating -; then
-			echo -e "$cErr""Could not persist Btrfs snapshot creation state"$cNone
-			exit 6
-		fi
-		if ! sudo btrfs subvolume snapshot -r "$btrfsSubvolumeRoot" "$btrfsSnapshotPath"; then
-			echo -e "$cErr""Could not create Btrfs snapshot: "$cFile"${btrfsSnapshotPath}"$cNone
-			exit 6
-		fi
-		if ! verify_btrfs_snapshot || ! write_backup_state ready "$btrfsSnapshotUuid"; then
-			echo -e "$cErr""Could not verify or persist Btrfs snapshot state"$cNone
-			exit 6
+		snapshotKind="${backupState[snapshot_kind]}"
+		snapshotFsUuid="${backupState[snapshot_fs_uuid]}"
+		snapshotRelativePath="${backupState[snapshot_relative_path]}"
+		btrfsSnapshotPath="${backupState[snapshot_path]}"
+		btrfsSnapshotUuid="${backupState[snapshot_uuid]}"
+		if [ "${backupState[status]}" = cleanup_pending ]; then
+			cleanup_snapshot || exit 6
+		elif ask_backup_source "Continue pending backup from $btrfsSnapshotPath? (n discards it; q discards it and quits)"; then
+			if [ "$snapshotKind" = timeshift ]; then
+				resolve_timeshift_snapshot || exit 6
+			elif [ "${backupState[status]}" = creating ]; then
+				prepare_owned_snapshot || exit 6
+			elif ! snapshot_exists || ! verify_btrfs_snapshot || [ "$btrfsSnapshotUuid" != "${backupState[snapshot_uuid]}" ]; then
+				echo 'Pending Btrfs snapshot is missing, invalid, or has a different UUID; state retained.'
+				exit 6
+			fi
+			check_nested_btrfs_subvolumes || exit 6
+			btrfsBackup=1
+			printf 'Continuing backup from %s snapshot: %s\n' "$snapshotKind" "$btrfsSnapshotPath"
+		else
+			discard_pending_snapshot || exit 6
 		fi
 	fi
 
+	if [ "$btrfsBackup" = 0 ]; then
+		if find_timeshift_snapshot; then
+			if ask_backup_source 'Use this Timeshift snapshot?'; then
+				snapshotKind=timeshift
+				snapshotFsUuid="$btrfsSourceFsUuid"
+				if ! snapshot_tools_ready || ! verify_timeshift_snapshot || \
+					[ "$(btrfs_show_value "$btrfsSnapshotPath" id)" != "$timeshiftCandidateId" ]; then
+					echo 'Selected Timeshift snapshot could not be verified; backup stopped.'
+					exit 6
+				fi
+				check_nested_btrfs_subvolumes || exit 6
+				write_backup_state ready "$btrfsSnapshotUuid" || exit 6
+				btrfsBackup=1
+				printf 'Using Timeshift snapshot: %s\n' "$btrfsSnapshotPath"
+			fi
+		fi
+		if [ "$btrfsBackup" = 0 ] && ask_backup_source 'Create a temporary read-only Btrfs snapshot for this backup?'; then
+			snapshotKind=owned
+			snapshotFsUuid="$btrfsSourceFsUuid"
+			snapshotRelativePath=''
+			btrfsSnapshotPath="$ownedSnapshotPath"
+			snapshot_tools_ready || exit 6
+			if snapshot_exists; then
+				echo "Untracked snapshot already exists; refusing to reuse or delete it: $btrfsSnapshotPath"
+				exit 6
+			fi
+			check_nested_btrfs_subvolumes || exit 6
+			write_backup_state creating - || exit 6
+			prepare_owned_snapshot || exit 6
+			btrfsBackup=1
+			printf 'Using temporary Btrfs snapshot: %s\n' "$btrfsSnapshotPath"
+		fi
+	fi
+fi
+
+if [ "$btrfsBackup" = 1 ]; then
 	backupRunSource="$(join_path "$btrfsSnapshotPath" "$btrfsSourceRelative")"
-	if ! sudo test -d "$backupRunSource"; then
+	if ! [ -d "$backupRunSource" ]; then
 		echo -e "$cErr""Source path is missing from Btrfs snapshot: "$cFile"${backupRunSource}"$cNone
 		exit 6
 	fi
+else
+	printf 'Backing up directly without a snapshot: %s\n' "$backupRunSource"
 fi
 
 if ! prepare_runtime_excludes; then
@@ -514,7 +711,8 @@ fi
 
 export ownFolderName=".dotfiles/backup"
 export exclusionFileName="$runtimeExclusionFileName"
-export interactiveMode="yes"
+export interactiveMode="no"
+[ ! -t 0 ] || export interactiveMode="yes"
 
 if ! run_backup_backend "$backupRunSource"; then
 	echo -e "$cErr""Error executing "$cFile"${ribs}"$cNone
@@ -526,13 +724,9 @@ if [ "$btrfsBackup" = 1 ]; then
 		echo -e "$cErr""Backup succeeded, but cleanup state could not be persisted."$cNone
 		exit 6
 	fi
-	if ! verify_btrfs_snapshot || ! sudo btrfs subvolume delete "$btrfsSnapshotPath"; then
+	if ! cleanup_snapshot; then
 		echo -e "$cErr""Backup succeeded, but snapshot cleanup failed; the next run will retry it:"$cNone
 		echo -e "$cFile""${btrfsSnapshotPath}"$cNone
-		exit 6
-	fi
-	if ! rm -f -- "$stateFile"; then
-		echo -e "$cErr""Snapshot was deleted, but completed Btrfs backup state could not be removed: "$cFile"${stateFile}"$cNone
 		exit 6
 	fi
 fi
