@@ -174,6 +174,7 @@ make_root_required() {
 
 test_readable_source_does_not_use_sudo() {
 	setup_case readable-no-sudo
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
 	run_non_tty
 	assert_status 0 "$FUNCNAME"
 	assert_absent "$caseLog/sudo" "$FUNCNAME"
@@ -182,6 +183,7 @@ test_readable_source_does_not_use_sudo() {
 
 test_dangling_symlink_does_not_require_sudo_or_snapshot() {
 	setup_case dangling-symlink-no-sudo
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
 	ln -s /home/ubuntu/.dsh/profiles/web/node_modules/smart-buffer \
 		"$caseRoot/live/jezek/dangling-link"
 	run_non_tty
@@ -190,6 +192,7 @@ test_dangling_symlink_does_not_require_sudo_or_snapshot() {
 	assert_not_contains 'Root privileges required' "$FUNCNAME"
 	assert_not_contains 'Timeshift' "$FUNCNAME"
 	assert_not_contains 'Btrfs snapshot' "$FUNCNAME"
+	assert_contains 'Scanning source for content requiring root privileges' "$FUNCNAME"
 	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
 }
 
@@ -198,6 +201,7 @@ test_root_backend_preserves_user_environment() {
 	make_root_required
 	SSH_AUTH_SOCK="$caseRoot/ssh-agent.sock" run_non_tty
 	assert_status 0 "$FUNCNAME"
+	assert_not_contains 'Scanning source for content requiring root privileges' "$FUNCNAME"
 	assert_file_contains "$caseLog/sudo" "HOME=$caseHome" "$FUNCNAME"
 	assert_file_contains "$caseLog/sudo" 'ownFolderName=.dotfiles/backup' "$FUNCNAME"
 	assert_file_contains "$caseLog/sudo" 'exclusionFileName=.exclude.runtime' "$FUNCNAME"
@@ -224,6 +228,7 @@ test_large_file_without_exclude_is_rejected_non_tty() {
 	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/large.bin"
 	run_non_tty
 	assert_status 130 "$FUNCNAME"
+	assert_contains 'Scanning source for large non-excluded files' "$FUNCNAME"
 	assert_contains 'large.bin' "$FUNCNAME"
 	assert_contains 'Backup cancelled because large non-excluded files were found' "$FUNCNAME"
 	assert_absent "$caseLog/backend" "$FUNCNAME"
@@ -232,7 +237,7 @@ test_large_file_without_exclude_is_rejected_non_tty() {
 test_large_file_tty_can_continue() {
 	setup_case large-file-tty
 	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/large.bin"
-	run_tty y
+	TIMESHIFT_AVAILABLE=0 run_tty yn
 	assert_status 0 "$FUNCNAME"
 	assert_contains 'Continue despite these large files?' "$FUNCNAME"
 	assert_file_contains "$caseLog/backend" "$caseRoot/live/jezek" "$FUNCNAME"
@@ -240,12 +245,13 @@ test_large_file_tty_can_continue() {
 
 test_large_file_under_excluded_directory_is_ignored() {
 	setup_case excluded-large-file
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
 	mkdir -p "$caseRoot/live/jezek/models"
 	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/models/large.bin"
 	printf '%s\n' '- /models/' > "$caseHome/.dotfiles/backup/exclude.txt"
 	run_non_tty
 	assert_status 0 "$FUNCNAME"
-	assert_not_contains 'large non-excluded files' "$FUNCNAME"
+	assert_not_contains 'Non-excluded files larger than' "$FUNCNAME"
 	assert_file_contains "$caseLog/backend" "$caseRoot/live/jezek" "$FUNCNAME"
 }
 

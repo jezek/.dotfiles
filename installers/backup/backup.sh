@@ -820,26 +820,28 @@ if ! sourceFilesystem="$(findmnt -T "$backupSourceDirectory" -n -o FSTYPE)" || [
 fi
 
 backupContentRequiresRoot=0
-detect_inaccessible_paths
-if [ -f "$stateFile" ]; then
-	backupInaccessiblePaths+=("<pending Btrfs snapshot state: $stateFile>")
-fi
-if [ ${#backupInaccessiblePaths[@]} -gt 0 ]; then
+
+if [ "$backupRunAsRoot" = yes ]; then
 	backupContentRequiresRoot=1
-	if [ "$backupRunAsRoot" = no ]; then
+	if [ "$EUID" != 0 ] && ! command -v sudo >/dev/null 2>&1; then
+		echo -e "$cErr""Root privileges are required, but sudo is not installed."$cNone
+		exit 4
+	fi
+else
+	printf 'Scanning source for content requiring root privileges...\n'
+	detect_inaccessible_paths
+	if [ -f "$stateFile" ]; then
+		backupInaccessiblePaths+=("<pending Btrfs snapshot state: $stateFile>")
+	fi
+	if [ ${#backupInaccessiblePaths[@]} -gt 0 ]; then
 		echo -e "$cErr""Root privileges are required for non-excluded backup content:"$cNone
 		.toLines "${backupInaccessiblePaths[@]}"
 		echo 'Set backupRunAsRoot=yes or add only intentionally omitted paths to exclude.txt.'
 		exit 6
 	fi
-	if [ "$EUID" != 0 ] && ! command -v sudo >/dev/null 2>&1; then
-		echo -e "$cErr""Root privileges are required, but sudo is not installed."$cNone
-		exit 4
-	fi
-	printf 'Root privileges required for non-excluded backup content:\n'
-	.toLines "${backupInaccessiblePaths[@]}"
 fi
 
+printf 'Scanning source for large non-excluded files...\n'
 if ! scan_large_files; then
 	echo -e "$cErr""Could not scan for large non-excluded files"$cNone
 	exit 2

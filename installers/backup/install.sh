@@ -239,7 +239,7 @@ fi
 
 backupDepth=0
 backupRunAsRoot="no"
-if .check_yes_no "Allow this backup to use sudo only when non-excluded source content requires root access?"; then
+if .check_yes_no "Run this backup with root privileges?"; then
 	backupRunAsRoot="yes"
 fi
 
