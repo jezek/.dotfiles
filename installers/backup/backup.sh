@@ -17,8 +17,8 @@ if [ ! -f "$backupConfigFile" ]; then
 	exit 1
 fi
 
-unset backupSourceDirectory backupDestRemote backupDestDirectory backupDepth
-if ! .loadConfig "$backupConfigFile" backupSourceDirectory backupDestRemote backupDestDirectory backupDepth; then
+unset backupSourceDirectory backupDestRemote backupDestDirectory backupDepth backupRunAsRoot backupLargeFileThresholdBytes
+if ! .loadConfig "$backupConfigFile" backupSourceDirectory backupDestRemote backupDestDirectory backupDepth backupRunAsRoot backupLargeFileThresholdBytes; then
 	exit 2
 fi
 
@@ -30,13 +30,30 @@ for requiredVariable in backupSourceDirectory backupDestRemote backupDestDirecto
 done
 unset requiredVariable
 
-if [[ -v backupDepth ]]; then
-	if [[ ! "$backupDepth" =~ ^[1-9][0-9]*$ ]]; then
-		echo -e "$cErr""Invalid backup config: "$cNone"\$backupDepth must be a positive integer"
-		exit 2
-	fi
-	export backupDepth
+backupRunAsRoot="${backupRunAsRoot:-no}"
+backupDepthIdentity="${backupDepth-<default>}"
+backupDepth="${backupDepth:-0}"
+backupLargeFileThresholdBytes="${backupLargeFileThresholdBytes:-5368709120}"
+
+if [[ ! "$backupRunAsRoot" =~ ^(yes|no)$ ]]; then
+	echo -e "$cErr""Invalid backup config: "$cNone"\$backupRunAsRoot must be yes or no"
+	exit 2
 fi
+
+if [[ ! "$backupDepth" =~ ^[0-9]+$ ]]; then
+	echo -e "$cErr""Invalid backup config: "$cNone"\$backupDepth must be a non-negative integer"
+	exit 2
+fi
+export backupDepth
+
+if [[ ! "$backupLargeFileThresholdBytes" =~ ^[1-9][0-9]*$ ]]; then
+	echo -e "$cErr""Invalid backup config: "$cNone"\$backupLargeFileThresholdBytes must be a positive integer"
+	exit 2
+fi
+
+backupInvokerUser="${SUDO_USER:-$(id -un)}"
+backupInvokerGroup="$(id -gn "$backupInvokerUser" 2>/dev/null || id -gn)"
+backupTargetOwner="${backupInvokerUser}:${backupInvokerGroup}"
 
 if ! backupSourceDirectory="$(realpath -e -- "$backupSourceDirectory")" || [ ! -d "$backupSourceDirectory" ]; then
 	echo -e "$cErr""Source directory does not exist: "$cFile"${backupSourceDirectory}"$cNone
@@ -70,7 +87,7 @@ backup_identity_fingerprint() {
 	local result
 	result="$({
 		printf 'source\0%s\0remote\0%s\0destination\0%s\0depth\0%s\0' \
-			"$backupSourceDirectory" "$backupDestRemote" "$backupDestDirectory" "${backupDepth-<default>}"
+			"$backupSourceDirectory" "$backupDestRemote" "$backupDestDirectory" "$backupDepthIdentity"
 		if [ -f "$backupExcludesFile" ]; then
 			printf 'excludes\0present\0'
 			cat -- "$backupExcludesFile"
@@ -164,10 +181,94 @@ join_path() {
 	fi
 }
 
+path_is_excluded() {
+	local relative="${1#/}" candidate controlRelative rule pattern directory anchored
+	if controlRelative="$(path_relative_to "$backupSourceDirectory" "$dotBackupDir")"; then
+		controlRelative="${controlRelative%/}"
+		if [ -n "$controlRelative" ] && \
+			{ [ "$relative" = "$controlRelative" ] || [[ "$relative" == "$controlRelative"/* ]]; }; then
+			return 0
+		fi
+	fi
+
+	for rule in "${backupExcludes[@]}"; do
+		rule="${rule#"${rule%%[![:space:]]*}"}"
+		rule="${rule%"${rule##*[![:space:]]}"}"
+		[[ "$rule" == '- '* ]] || continue
+
+		pattern="${rule#- }"
+		anchored=0
+		if [[ "$pattern" == /* ]]; then
+			anchored=1
+			pattern="${pattern#/}"
+		fi
+		directory=0
+		if [[ "$pattern" == */ ]]; then
+			directory=1
+			pattern="${pattern%/}"
+		fi
+
+		if [ "$directory" = 1 ]; then
+			candidate="$relative"
+			while [ -n "$candidate" ]; do
+				if { [ "$anchored" = 1 ] && [[ "$candidate" == $pattern ]]; } || \
+					{ [ "$anchored" = 0 ] && { [[ "$candidate" == $pattern ]] || [[ "$candidate" == */$pattern ]]; }; }; then
+					return 0
+				fi
+				[[ "$candidate" == */* ]] || break
+				candidate="${candidate%/*}"
+			done
+		elif { [ "$anchored" = 1 ] && [[ "$relative" == $pattern ]]; } || \
+			{ [ "$anchored" = 0 ] && { [[ "$relative" == $pattern ]] || [[ "$relative" == */$pattern ]]; }; }; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+build_find_prune_arguments() {
+	local controlRelative rule pattern anchored findPattern
+	backupFindPruneArguments=()
+	if controlRelative="$(path_relative_to "$backupSourceDirectory" "$dotBackupDir")"; then
+		controlRelative="${controlRelative%/}"
+		if [ -n "$controlRelative" ]; then
+			backupFindPruneArguments+=(
+				-path "$(join_path "$backupSourceDirectory" "$controlRelative")"
+				-prune -o
+			)
+		fi
+	fi
+	for rule in "${backupExcludes[@]}"; do
+		rule="${rule#"${rule%%[![:space:]]*}"}"
+		rule="${rule%"${rule##*[![:space:]]}"}"
+		[[ "$rule" == '- '* ]] || continue
+		pattern="${rule#- }"
+		anchored=0
+		if [[ "$pattern" == /* ]]; then
+			anchored=1
+			pattern="${pattern#/}"
+		fi
+		[[ "$pattern" == */ ]] || continue
+		pattern="${pattern%/}"
+		[[ "$pattern" != *'*'* && "$pattern" != *'?'* && "$pattern" != *'['* ]] || continue
+		[ -n "$pattern" ] || continue
+		if [ "$anchored" = 1 ]; then
+			findPattern="$(join_path "$backupSourceDirectory" "$pattern")"
+		else
+			findPattern="$(join_path "$backupSourceDirectory" "*/$pattern")"
+		fi
+		backupFindPruneArguments+=(
+			-path "$findPattern"
+			-prune -o
+		)
+	done
+}
+
 stateFile="${dotBackupDir}/.btrfs-backup.state"
 runtimeExcludesFile="${dotBackupDir}/.exclude.runtime"
 runtimeExclusionFileName="${runtimeExcludesFile##*/}"
-trap 'rm -f -- "$runtimeExcludesFile"' EXIT
+largeFilesScanFile="${dotBackupDir}/.large-files.scan"
+trap 'rm -f -- "$runtimeExcludesFile" "$largeFilesScanFile"' EXIT
 
 # Questions are local to backup: never consume piped input as an answer.
 ask_backup_source() {
@@ -206,6 +307,85 @@ backup_privileged() {
 	else
 		sudo -n "$@"
 	fi
+}
+
+detect_inaccessible_paths() {
+	local path relative
+	local -a findArguments
+	backupInaccessiblePaths=()
+	build_find_prune_arguments
+	findArguments=("$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}")
+	findArguments+=(
+		\( -type d \( ! -readable -o ! -executable \) -print0 -prune \) -o
+		\( ! -readable -print0 \)
+	)
+	while IFS= read -r -d '' path; do
+		relative="$(path_relative_to "$backupSourceDirectory" "$path")" || continue
+		[ -n "$relative" ] || continue
+		if ! path_is_excluded "$relative"; then
+			backupInaccessiblePaths+=("$relative")
+		fi
+	done < <(find "${findArguments[@]}" 2>/dev/null)
+}
+
+format_backup_size() {
+	if command -v numfmt >/dev/null 2>&1; then
+		numfmt --to=iec-i --suffix=B "$1"
+	else
+		printf '%s B' "$1"
+	fi
+}
+
+scan_large_files() {
+	local size path relative
+	local -a findArguments
+	backupLargeFiles=()
+	backupLargeFileSizes=()
+	: > "$largeFilesScanFile" || return 1
+	build_find_prune_arguments
+	findArguments=("$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}" -type f \
+		-size "+${backupLargeFileThresholdBytes}c" -printf '%s\0%p\0')
+
+	if [ "${backupContentRequiresRoot:-0}" = 1 ]; then
+		if ! backup_privileged find "${findArguments[@]}" > "$largeFilesScanFile"; then
+			return 1
+		fi
+	else
+		if ! find "${findArguments[@]}" > "$largeFilesScanFile" 2>/dev/null; then
+			return 1
+		fi
+	fi
+
+	while IFS= read -r -d '' size && IFS= read -r -d '' path; do
+		relative="$(path_relative_to "$backupSourceDirectory" "$path")" || continue
+		[ -n "$relative" ] || continue
+		if ! path_is_excluded "$relative"; then
+			backupLargeFiles+=("$relative")
+			backupLargeFileSizes+=("$size")
+		fi
+	done < "$largeFilesScanFile"
+}
+
+ask_backup_large_files() {
+	local answer
+	if [ ! -t 0 ]; then
+		printf 'Large non-excluded files found; backup cancelled because there is no TTY.\n'
+		return 1
+	fi
+	while :; do
+		printf 'Continue despite these large files? [y/N/q]: '
+		if ! IFS= read -r -n1 answer; then
+			printf '\nInput closed; backup cancelled.\n'
+			return 1
+		fi
+		printf '\n'
+		case "$answer" in
+			y|Y) return 0 ;;
+			''|n|N) return 1 ;;
+			q|Q) exit 130 ;;
+			*) echo 'Please answer y, n, or q to quit.' ;;
+		esac
+	done
 }
 
 snapshotKind=owned
@@ -602,23 +782,82 @@ prepare_runtime_excludes() {
 run_backup_backend() {
 	local sourceDirectory="$1"
 	local -a command=("$ribs" "$sourceDirectory" "$backupDestDirectory")
+	local -a backendEnvironment=(
+		"HOME=$HOME"
+		"ownFolderName=.dotfiles/backup"
+		"exclusionFileName=$runtimeExclusionFileName"
+		"interactiveMode=$interactiveMode"
+		"backupTargetOwner=$backupTargetOwner"
+	)
 	if [ -n "$backupDestRemote" ]; then
 		command+=("$backupDestRemote")
+	fi
+	if [[ -v backupDepth ]]; then
+		backendEnvironment+=("backupDepth=$backupDepth")
+	fi
+	if [ -n "${SSH_AUTH_SOCK:-}" ]; then
+		backendEnvironment+=("SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
 	fi
 	printf '%b' "$cRun" >&2
 	printf '%q ' "${command[@]}" >&2
 	printf '%b\n' "$cNone" >&2
-	"${command[@]}"
+	if [ "${backupContentRequiresRoot:-0}" = 1 ]; then
+		backup_privileged env "${backendEnvironment[@]}" "${command[@]}"
+	else
+		"${command[@]}"
+	fi
+}
+
+restore_backup_control_ownership() {
+	[ "${backupContentRequiresRoot:-0}" = 1 ] || return 0
+	backup_privileged chown -R -- "$backupTargetOwner" "$dotBackupDir"
 }
 
 if ! sourceFilesystem="$(findmnt -T "$backupSourceDirectory" -n -o FSTYPE)" || [ -z "$sourceFilesystem" ]; then
 	echo -e "$cErr""Could not detect source filesystem: "$cFile"${backupSourceDirectory}"$cNone
 	exit 4
 fi
+
+backupContentRequiresRoot=0
+detect_inaccessible_paths
+if [ -f "$stateFile" ]; then
+	backupInaccessiblePaths+=("<pending Btrfs snapshot state: $stateFile>")
+fi
+if [ ${#backupInaccessiblePaths[@]} -gt 0 ]; then
+	backupContentRequiresRoot=1
+	if [ "$backupRunAsRoot" = no ]; then
+		echo -e "$cErr""Root privileges are required for non-excluded backup content:"$cNone
+		.toLines "${backupInaccessiblePaths[@]}"
+		echo 'Set backupRunAsRoot=yes or add only intentionally omitted paths to exclude.txt.'
+		exit 6
+	fi
+	if [ "$EUID" != 0 ] && ! command -v sudo >/dev/null 2>&1; then
+		echo -e "$cErr""Root privileges are required, but sudo is not installed."$cNone
+		exit 4
+	fi
+	printf 'Root privileges required for non-excluded backup content:\n'
+	.toLines "${backupInaccessiblePaths[@]}"
+fi
+
+if ! scan_large_files; then
+	echo -e "$cErr""Could not scan for large non-excluded files"$cNone
+	exit 2
+fi
+if [ ${#backupLargeFiles[@]} -gt 0 ]; then
+	echo "Non-excluded files larger than $(format_backup_size "$backupLargeFileThresholdBytes") were found:"
+	for largeFileIndex in "${!backupLargeFiles[@]}"; do
+		printf '  %s\t%s\n' "$(format_backup_size "${backupLargeFileSizes[$largeFileIndex]}")" "${backupLargeFiles[$largeFileIndex]}"
+	done
+	if ! ask_backup_large_files; then
+		echo 'Backup cancelled because large non-excluded files were found.'
+		exit 130
+	fi
+fi
+
 btrfsBackup=0
 backupRunSource="$backupSourceDirectory"
 
-if [ "$sourceFilesystem" = btrfs ]; then
+if [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ]; then
 	if ! find_btrfs_subvolume_root; then
 		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
 		exit 6
@@ -629,7 +868,7 @@ elif [ -f "$stateFile" ]; then
 	exit 6
 fi
 
-if [ "$sourceFilesystem" = btrfs ]; then
+if [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ]; then
 	if [ -f "$stateFile" ]; then
 		if ! snapshot_tools_ready || ! load_backup_state || ! validate_loaded_state; then
 			echo 'Could not validate pending Btrfs backup state; state retained.'
@@ -715,8 +954,16 @@ export interactiveMode="no"
 [ ! -t 0 ] || export interactiveMode="yes"
 
 if ! run_backup_backend "$backupRunSource"; then
+	if ! restore_backup_control_ownership; then
+		echo -e "$cErr""Backup failed and backup control files could not be returned to "$cFile"$backupTargetOwner"$cNone
+	fi
 	echo -e "$cErr""Error executing "$cFile"${ribs}"$cNone
 	exit 255
+fi
+
+if ! restore_backup_control_ownership; then
+	echo -e "$cErr""Backup succeeded, but backup control files could not be returned to "$cFile"$backupTargetOwner"$cNone
+	exit 6
 fi
 
 if [ "$btrfsBackup" = 1 ]; then
