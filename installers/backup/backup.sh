@@ -315,6 +315,13 @@ backup_privileged() {
 	fi
 }
 
+ensure_backup_root_available() {
+	if [ "$EUID" != 0 ] && ! command -v sudo >/dev/null 2>&1; then
+		echo -e "$cErr""Root privileges are required, but sudo is not installed."$cNone
+		return 1
+	fi
+}
+
 detect_inaccessible_paths() {
 	local path relative
 	local -a findArguments
@@ -877,120 +884,138 @@ if ! sourceFilesystem="$(findmnt -T "$backupSourceDirectory" -n -o FSTYPE)" || [
 	exit 4
 fi
 
-backupContentRequiresRoot=0
-
-if [ "$backupRunAsRoot" = yes ]; then
-	backupContentRequiresRoot=1
-	if [ "$EUID" != 0 ] && ! command -v sudo >/dev/null 2>&1; then
-		echo -e "$cErr""Root privileges are required, but sudo is not installed."$cNone
-		exit 4
-	fi
-else
-	printf 'Scanning source for content requiring root privileges...\n'
-	detect_inaccessible_paths
-	if [ -f "$stateFile" ]; then
-		backupInaccessiblePaths+=("<pending Btrfs snapshot state: $stateFile>")
-	fi
-	if [ ${#backupInaccessiblePaths[@]} -gt 0 ]; then
-		echo -e "$cErr""Root privileges are required for non-excluded backup content:"$cNone
-		.toLines "${backupInaccessiblePaths[@]}"
-		echo 'Set backupRunAsRoot=yes or add only intentionally omitted paths to exclude.txt.'
-		exit 6
-	fi
-fi
-
-printf 'Scanning source for large non-excluded files...\n'
-if ! scan_large_files; then
-	echo -e "$cErr""Could not scan for large non-excluded files"$cNone
-	exit 2
-fi
-if [ ${#backupLargeFiles[@]} -gt 0 ]; then
-	echo "Non-excluded files larger than $(format_backup_size "$backupLargeFileThresholdBytes") were found:"
-	for largeFileIndex in "${!backupLargeFiles[@]}"; do
-		printf '  %s\t%s\n' "$(format_backup_size "${backupLargeFileSizes[$largeFileIndex]}")" "${backupLargeFiles[$largeFileIndex]}"
-	done
-	if ! ask_backup_large_files; then
-		echo 'Backup cancelled because large non-excluded files were found.'
-		exit 130
-	fi
-fi
-
 btrfsBackup=0
 backupRunSource="$backupSourceDirectory"
+btrfsSourcePrepared=0
+pendingSnapshotBackup=0
 
-if [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ]; then
+if [ -f "$stateFile" ]; then
+	if [ "$sourceFilesystem" != btrfs ]; then
+		echo -e "$cErr""A pending Btrfs backup state exists, but the configured source is no longer on Btrfs:"$cNone
+		echo -e "$cFile""${stateFile}"$cNone
+		exit 6
+	fi
+	if [ "$backupRunAsRoot" = no ]; then
+		echo -e "$cErr""A pending Btrfs backup state requires backupRunAsRoot=yes; source scans skipped:"$cNone
+		echo -e "$cFile""${stateFile}"$cNone
+		exit 6
+	fi
+	backupContentRequiresRoot=1
+	ensure_backup_root_available || exit 4
 	if ! find_btrfs_subvolume_root; then
 		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
 		exit 6
 	fi
-elif [ -f "$stateFile" ]; then
-	echo -e "$cErr""A pending Btrfs backup state exists, but the configured source is no longer on Btrfs:"$cNone
-	echo -e "$cFile""${stateFile}"$cNone
-	exit 6
-fi
+	btrfsSourcePrepared=1
 
-if [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ]; then
-	if [ -f "$stateFile" ]; then
-		if ! snapshot_tools_ready || ! load_backup_state || ! validate_loaded_state; then
-			echo 'Could not validate pending Btrfs backup state; state retained.'
+	printf 'Pending Btrfs backup state found; validating snapshot before source scans...\n'
+	if ! snapshot_tools_ready || ! load_backup_state || ! validate_loaded_state; then
+		echo 'Could not validate pending Btrfs backup state; state retained.'
+		exit 6
+	fi
+	snapshotKind="${backupState[snapshot_kind]}"
+	snapshotFsUuid="${backupState[snapshot_fs_uuid]}"
+	snapshotRelativePath="${backupState[snapshot_relative_path]}"
+	btrfsSnapshotPath="${backupState[snapshot_path]}"
+	btrfsSnapshotUuid="${backupState[snapshot_uuid]}"
+	if [ "${backupState[status]}" = cleanup_pending ]; then
+		cleanup_snapshot || exit 6
+		printf 'Pending cleanup completed; starting a fresh backup.\n'
+	elif ask_backup_source "Continue pending backup from $btrfsSnapshotPath? (n discards it; q discards it and quits)"; then
+		if [ "$snapshotKind" = timeshift ]; then
+			resolve_timeshift_snapshot || exit 6
+		elif [ "${backupState[status]}" = creating ]; then
+			prepare_owned_snapshot || exit 6
+		elif ! snapshot_exists || ! verify_btrfs_snapshot || [ "$btrfsSnapshotUuid" != "${backupState[snapshot_uuid]}" ]; then
+			echo 'Pending Btrfs snapshot is missing, invalid, or has a different UUID; state retained.'
 			exit 6
 		fi
-		snapshotKind="${backupState[snapshot_kind]}"
-		snapshotFsUuid="${backupState[snapshot_fs_uuid]}"
-		snapshotRelativePath="${backupState[snapshot_relative_path]}"
-		btrfsSnapshotPath="${backupState[snapshot_path]}"
-		btrfsSnapshotUuid="${backupState[snapshot_uuid]}"
-		if [ "${backupState[status]}" = cleanup_pending ]; then
-			cleanup_snapshot || exit 6
-		elif ask_backup_source "Continue pending backup from $btrfsSnapshotPath? (n discards it; q discards it and quits)"; then
-			if [ "$snapshotKind" = timeshift ]; then
-				resolve_timeshift_snapshot || exit 6
-			elif [ "${backupState[status]}" = creating ]; then
-				prepare_owned_snapshot || exit 6
-			elif ! snapshot_exists || ! verify_btrfs_snapshot || [ "$btrfsSnapshotUuid" != "${backupState[snapshot_uuid]}" ]; then
-				echo 'Pending Btrfs snapshot is missing, invalid, or has a different UUID; state retained.'
-				exit 6
-			fi
-			check_nested_btrfs_subvolumes || exit 6
-			btrfsBackup=1
-			printf 'Continuing backup from %s snapshot: %s\n' "$snapshotKind" "$btrfsSnapshotPath"
-		else
-			discard_pending_snapshot || exit 6
+		check_nested_btrfs_subvolumes || exit 6
+		btrfsBackup=1
+		pendingSnapshotBackup=1
+		printf 'Continuing backup from %s snapshot without rescanning source: %s\n' "$snapshotKind" "$btrfsSnapshotPath"
+	else
+		discard_pending_snapshot || exit 6
+		printf 'Pending snapshot discarded; scanning current source.\n'
+	fi
+fi
+
+if [ "$pendingSnapshotBackup" = 0 ]; then
+	backupContentRequiresRoot=0
+	if [ "$backupRunAsRoot" = yes ]; then
+		backupContentRequiresRoot=1
+		ensure_backup_root_available || exit 4
+	else
+		printf 'Scanning source for content requiring root privileges...\n'
+		detect_inaccessible_paths
+		if [ -f "$stateFile" ]; then
+			backupInaccessiblePaths+=("<pending Btrfs snapshot state: $stateFile>")
+		fi
+		if [ ${#backupInaccessiblePaths[@]} -gt 0 ]; then
+			echo -e "$cErr""Root privileges are required for non-excluded backup content:"$cNone
+			.toLines "${backupInaccessiblePaths[@]}"
+			echo 'Set backupRunAsRoot=yes or add only intentionally omitted paths to exclude.txt.'
+			exit 6
 		fi
 	fi
 
-	if [ "$btrfsBackup" = 0 ]; then
-		if find_timeshift_snapshot; then
-			if ask_backup_source 'Use this Timeshift snapshot?'; then
-				snapshotKind=timeshift
-				snapshotFsUuid="$btrfsSourceFsUuid"
-				if ! snapshot_tools_ready || ! verify_timeshift_snapshot || \
-					[ "$(btrfs_show_value "$btrfsSnapshotPath" id)" != "$timeshiftCandidateId" ]; then
-					echo 'Selected Timeshift snapshot could not be verified; backup stopped.'
-					exit 6
-				fi
-				check_nested_btrfs_subvolumes || exit 6
-				write_backup_state ready "$btrfsSnapshotUuid" || exit 6
-				btrfsBackup=1
-				printf 'Using Timeshift snapshot: %s\n' "$btrfsSnapshotPath"
-			fi
+	printf 'Scanning source for large non-excluded files...\n'
+	if ! scan_large_files; then
+		echo -e "$cErr""Could not scan for large non-excluded files"$cNone
+		exit 2
+	fi
+	if [ ${#backupLargeFiles[@]} -gt 0 ]; then
+		echo "Non-excluded files larger than $(format_backup_size "$backupLargeFileThresholdBytes") were found:"
+		for largeFileIndex in "${!backupLargeFiles[@]}"; do
+			printf '  %s\t%s\n' "$(format_backup_size "${backupLargeFileSizes[$largeFileIndex]}")" "${backupLargeFiles[$largeFileIndex]}"
+		done
+		if ! ask_backup_large_files; then
+			echo 'Backup cancelled because large non-excluded files were found.'
+			exit 130
 		fi
-		if [ "$btrfsBackup" = 0 ] && ask_backup_source 'Create a temporary read-only Btrfs snapshot for this backup?'; then
-			snapshotKind=owned
+	fi
+fi
+
+if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ] && [ "$btrfsSourcePrepared" = 0 ]; then
+	if ! find_btrfs_subvolume_root; then
+		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
+		exit 6
+	fi
+	btrfsSourcePrepared=1
+fi
+
+
+if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ]; then
+	if find_timeshift_snapshot; then
+		if ask_backup_source 'Use this Timeshift snapshot?'; then
+			snapshotKind=timeshift
 			snapshotFsUuid="$btrfsSourceFsUuid"
-			snapshotRelativePath=''
-			btrfsSnapshotPath="$ownedSnapshotPath"
-			snapshot_tools_ready || exit 6
-			if snapshot_exists; then
-				echo "Untracked snapshot already exists; refusing to reuse or delete it: $btrfsSnapshotPath"
+			if ! snapshot_tools_ready || ! verify_timeshift_snapshot || \
+				[ "$(btrfs_show_value "$btrfsSnapshotPath" id)" != "$timeshiftCandidateId" ]; then
+				echo 'Selected Timeshift snapshot could not be verified; backup stopped.'
 				exit 6
 			fi
 			check_nested_btrfs_subvolumes || exit 6
-			write_backup_state creating - || exit 6
-			prepare_owned_snapshot || exit 6
+			write_backup_state ready "$btrfsSnapshotUuid" || exit 6
 			btrfsBackup=1
-			printf 'Using temporary Btrfs snapshot: %s\n' "$btrfsSnapshotPath"
+			printf 'Using Timeshift snapshot: %s\n' "$btrfsSnapshotPath"
 		fi
+	fi
+	if [ "$btrfsBackup" = 0 ] && ask_backup_source 'Create a temporary read-only Btrfs snapshot for this backup?'; then
+		snapshotKind=owned
+		snapshotFsUuid="$btrfsSourceFsUuid"
+		snapshotRelativePath=''
+		btrfsSnapshotPath="$ownedSnapshotPath"
+		snapshot_tools_ready || exit 6
+		if snapshot_exists; then
+			echo "Untracked snapshot already exists; refusing to reuse or delete it: $btrfsSnapshotPath"
+			exit 6
+		fi
+		check_nested_btrfs_subvolumes || exit 6
+		write_backup_state creating - || exit 6
+		prepare_owned_snapshot || exit 6
+		btrfsBackup=1
+		printf 'Using temporary Btrfs snapshot: %s\n' "$btrfsSnapshotPath"
 	fi
 fi
 

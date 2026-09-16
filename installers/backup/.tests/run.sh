@@ -433,6 +433,28 @@ test_q_discards_v1_owned_snapshot() {
 	assert_absent "$caseLog/backend" "$FUNCNAME"
 }
 
+test_pending_snapshot_requires_root_without_scanning() {
+	setup_case pending-no-root
+	write_v1_pending_state
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	run_non_tty
+	assert_status 6 "$FUNCNAME"
+	assert_contains 'A pending Btrfs backup state requires backupRunAsRoot=yes' "$FUNCNAME"
+	assert_not_contains 'Scanning source' "$FUNCNAME"
+	assert_absent "$caseLog/backend" "$FUNCNAME"
+}
+
+test_declining_pending_snapshot_starts_fresh_backup() {
+	setup_case pending-decline
+	write_v1_pending_state
+	TIMESHIFT_AVAILABLE=0 run_tty nn
+	assert_status 0 "$FUNCNAME"
+	assert_contains 'Pending snapshot discarded; scanning current source' "$FUNCNAME"
+	assert_contains 'Scanning source for large non-excluded files' "$FUNCNAME"
+	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
+}
+
 test_timeshift_failure_resumes_after_mount_path_changes() {
 	setup_case timeshift-resume
 	make_root_required
@@ -443,6 +465,7 @@ test_timeshift_failure_resumes_after_mount_path_changes() {
 	BACKEND_RC=0 TIMESHIFT_HOME=ts-home-next run_non_tty
 	assert_status 0 "$FUNCNAME second run"
 	assert_contains 'Continuing backup from timeshift snapshot' "$FUNCNAME"
+	assert_not_contains 'Scanning source' "$FUNCNAME"
 	assert_file_contains "$caseLog/backend" '/ts-home-next/timeshift-btrfs/snapshots/2024-01-02_00-00-00/@home/jezek' "$FUNCNAME"
 	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
 	[ ! -e "$caseLog/btrfs" ] || ! rg -q '^delete ' "$caseLog/btrfs" || fail "$FUNCNAME: deleted a Timeshift snapshot"
@@ -456,9 +479,11 @@ test_owned_failure_resumes_and_deletes_after_success() {
 	assert_file_contains "$caseHome/.dotfiles/backup/.btrfs-backup.state" $'snapshot_kind\towned' "$FUNCNAME"
 	[ -d "$(owned_snapshot_path)" ] || fail "$FUNCNAME: owned snapshot was not retained"
 	[ "$(rg -c '^snapshot ' "$caseLog/btrfs")" = 1 ] || fail "$FUNCNAME: snapshot was created more than once"
+	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/large.bin"
 	BACKEND_RC=0 TIMESHIFT_AVAILABLE=0 run_non_tty
 	assert_status 0 "$FUNCNAME second run"
 	assert_contains 'Continuing backup from owned snapshot' "$FUNCNAME"
+	assert_not_contains 'Scanning source' "$FUNCNAME"
 	assert_file_contains "$caseLog/btrfs" 'delete ' "$FUNCNAME"
 	assert_absent "$(owned_snapshot_path)" "$FUNCNAME"
 	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
@@ -481,6 +506,8 @@ for testFunction in \
 	test_non_btrfs_uses_live_source_without_questions \
 	test_q_stops_before_backup \
 	test_q_discards_v1_owned_snapshot \
+	test_pending_snapshot_requires_root_without_scanning \
+	test_declining_pending_snapshot_starts_fresh_backup \
 	test_timeshift_failure_resumes_after_mount_path_changes \
 	test_owned_failure_resumes_and_deletes_after_success
 do
