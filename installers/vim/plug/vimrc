@@ -17,7 +17,6 @@ Plug 'gabrielelana/vim-markdown'
 Plug 'peterhoeg/vim-qml'
 Plug 'vim-scripts/indentpython.vim'
 Plug 'nvie/vim-flake8'
-Plug 'https://gitlab.com/jezekchicki/vim-forgecode'
 Plug 'tpope/vim-surround'
 call plug#end()
 
