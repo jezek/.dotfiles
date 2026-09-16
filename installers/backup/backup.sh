@@ -316,6 +316,7 @@ detect_inaccessible_paths() {
 	build_find_prune_arguments
 	findArguments=("$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}")
 	findArguments+=(
+		\( -type l -prune \) -o
 		\( -type d \( ! -readable -o ! -executable \) -print0 -prune \) -o
 		\( ! -readable -print0 \)
 	)

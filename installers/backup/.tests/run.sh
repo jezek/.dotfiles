@@ -180,6 +180,19 @@ test_readable_source_does_not_use_sudo() {
 	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
 }
 
+test_dangling_symlink_does_not_require_sudo_or_snapshot() {
+	setup_case dangling-symlink-no-sudo
+	ln -s /home/ubuntu/.dsh/profiles/web/node_modules/smart-buffer \
+		"$caseRoot/live/jezek/dangling-link"
+	run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_absent "$caseLog/sudo" "$FUNCNAME"
+	assert_not_contains 'Root privileges required' "$FUNCNAME"
+	assert_not_contains 'Timeshift' "$FUNCNAME"
+	assert_not_contains 'Btrfs snapshot' "$FUNCNAME"
+	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
+}
+
 test_root_backend_preserves_user_environment() {
 	setup_case root-backend-environment
 	make_root_required
@@ -395,6 +408,7 @@ test_owned_failure_resumes_and_deletes_after_success() {
 
 for testFunction in \
 	test_readable_source_does_not_use_sudo \
+	test_dangling_symlink_does_not_require_sudo_or_snapshot \
 	test_root_backend_preserves_user_environment \
 	test_root_required_without_permission_aborts \
 	test_large_file_without_exclude_is_rejected_non_tty \
