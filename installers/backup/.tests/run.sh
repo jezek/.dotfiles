@@ -83,6 +83,25 @@ if [ "${1:-}" = find ]; then
 fi
 exec "$@"
 EOF
+	cat > "$caseRoot/fake-bin/ssh" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$CASE_LOG/ssh"
+if [[ " $* " == *' -G '* ]]; then
+	printf 'identityagent %s\n' "$CASE_ROOT/ssh-agent.sock"
+	printf 'identityfile ~/.ssh/id_ed25519\n'
+	printf 'userknownhostsfile %s/.ssh/known_hosts\n' "$HOME"
+fi
+if [ "${SSH_FAKE_FAIL:-0}" = 1 ] && [[ " $* " != *' -G '* ]]; then
+	echo 'Permission denied (publickey).' >&2
+	exit 255
+fi
+exit 0
+EOF
+	cat > "$caseRoot/fake-bin/scp" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$CASE_LOG/scp"
+exit 0
+EOF
 	cat > "$caseRoot/fake-bin/btrfs" <<'EOF'
 #!/bin/bash
 operation="${1:-} ${2:-}"
@@ -144,6 +163,8 @@ setup_case() {
 		"$caseHome/.dotfiles/backup" "$caseRoot/live/jezek" "$caseLog"
 	cp "$repoRoot/installers/install.sh" "$caseHome/.dotfiles/installers/install.sh"
 	cp "$repoRoot/installers/backup/backup.sh" "$caseHome/.dotfiles/installers/backup/backup.sh"
+	cp "$repoRoot/installers/backup/rsync-incremental-backup/rsync-incremental-backup-remote" \
+		"$caseHome/.dotfiles/installers/backup/rsync-incremental-backup/rsync-incremental-backup-remote"
 	cat > "$caseHome/.dotfiles/backup/config" <<EOF
 backupSourceDirectory="$caseRoot/live/jezek"
 backupDestRemote=""
@@ -211,6 +232,36 @@ test_root_backend_preserves_user_environment() {
 	assert_file_contains "$caseLog/sudo" "SSH_AUTH_SOCK=$caseRoot/ssh-agent.sock" "$FUNCNAME"
 }
 
+test_root_remote_backend_uses_user_ssh_context() {
+	setup_case root-remote-ssh-context
+	mkdir -p "$caseHome/.ssh"
+	printf 'Host *\n\tIdentityAgent %s\n' "$caseRoot/ssh-agent.sock" > "$caseHome/.ssh/config"
+	: > "$caseHome/.ssh/id_ed25519"
+	: > "$caseHome/.ssh/known_hosts"
+	sed -i 's/backupDestRemote=""/backupDestRemote="jezek@fixture"/' "$caseHome/.dotfiles/backup/config"
+	run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "HOME=$caseHome" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_CONFIG_FILE=$caseHome/.ssh/config" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_AUTH_SOCK=$caseRoot/ssh-agent.sock" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_IDENTITY_FILES=$caseHome/.ssh/id_ed25519" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_KNOWN_HOSTS_FILE=$caseHome/.ssh/known_hosts" "$FUNCNAME"
+	assert_file_contains "$caseLog/ssh" "-F $caseHome/.ssh/config" "$FUNCNAME"
+	assert_file_contains "$caseLog/ssh" "IdentityFile=$caseHome/.ssh/id_ed25519" "$FUNCNAME"
+	assert_file_contains "$caseLog/ssh" "UserKnownHostsFile=$caseHome/.ssh/known_hosts" "$FUNCNAME"
+}
+
+test_remote_authentication_error_is_visible() {
+	setup_case remote-auth-failure
+	mkdir -p "$caseHome/.ssh"
+	printf 'Host *\n\tIdentityAgent %s\n' "$caseRoot/ssh-agent.sock" > "$caseHome/.ssh/config"
+	sed -i 's/backupDestRemote=""/backupDestRemote="jezek@fixture"/' "$caseHome/.dotfiles/backup/config"
+	SSH_FAKE_FAIL=1 run_non_tty
+	assert_status 255 "$FUNCNAME"
+	assert_contains 'Permission denied (publickey).' "$FUNCNAME"
+	assert_contains 'Remote destination is not reachable' "$FUNCNAME"
+}
+
 test_root_required_without_permission_aborts() {
 	setup_case root-without-permission
 	make_root_required
@@ -260,6 +311,7 @@ run_non_tty() {
 	runOutput="$(HOME="$caseHome" PATH="$caseRoot/fake-bin:$PATH" \
 		TIMESHIFT_AVAILABLE="${TIMESHIFT_AVAILABLE:-1}" TIMESHIFT_HOME="${TIMESHIFT_HOME:-ts-home}" \
 		SOURCE_FSTYPE="${SOURCE_FSTYPE:-btrfs}" BACKEND_RC="${BACKEND_RC:-0}" \
+		SSH_FAKE_FAIL="${SSH_FAKE_FAIL:-0}" \
 		"$caseHome/.dotfiles/installers/backup/backup.sh" </dev/null 2>&1)"
 	runStatus=$?
 	set -e
@@ -416,6 +468,8 @@ for testFunction in \
 	test_readable_source_does_not_use_sudo \
 	test_dangling_symlink_does_not_require_sudo_or_snapshot \
 	test_root_backend_preserves_user_environment \
+	test_root_remote_backend_uses_user_ssh_context \
+	test_remote_authentication_error_is_visible \
 	test_root_required_without_permission_aborts \
 	test_large_file_without_exclude_is_rejected_non_tty \
 	test_large_file_tty_can_continue \

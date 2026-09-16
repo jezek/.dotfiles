@@ -53,6 +53,12 @@ fi
 
 backupInvokerUser="${SUDO_USER:-$(id -un)}"
 backupInvokerGroup="$(id -gn "$backupInvokerUser" 2>/dev/null || id -gn)"
+backupInvokerHome="$HOME"
+if [ -n "${SUDO_USER:-}" ] && command -v getent >/dev/null 2>&1; then
+	if resolvedInvokerHome="$(getent passwd "$backupInvokerUser" | awk -F: 'NR == 1 { print $6; exit }')" && [ -n "$resolvedInvokerHome" ]; then
+		backupInvokerHome="$resolvedInvokerHome"
+	fi
+fi
 backupTargetOwner="${backupInvokerUser}:${backupInvokerGroup}"
 
 if ! backupSourceDirectory="$(realpath -e -- "$backupSourceDirectory")" || [ ! -d "$backupSourceDirectory" ]; then
@@ -780,11 +786,54 @@ prepare_runtime_excludes() {
 	fi
 }
 
+prepare_backup_ssh_context() {
+	local sshDetails identityAgent identityFile knownHostsFile
+	local -a sshConfigArguments=()
+	backupSshConfigFile=""
+	backupSshAuthSocket="${SSH_AUTH_SOCK:-}"
+	backupSshIdentityFiles=()
+	backupSshKnownHostsFile=""
+
+	[ -n "$backupDestRemote" ] || return 0
+
+	if [ -r "$backupInvokerHome/.ssh/config" ]; then
+		backupSshConfigFile="$backupInvokerHome/.ssh/config"
+		sshConfigArguments=(-F "$backupSshConfigFile")
+	fi
+	sshDetails="$(HOME="$backupInvokerHome" ssh "${sshConfigArguments[@]}" -G "$backupDestRemote" 2>/dev/null || true)"
+
+	if [ -z "$backupSshAuthSocket" ]; then
+		identityAgent="$(awk '$1 == "identityagent" { print $2; exit }' <<< "$sshDetails")"
+		case "$identityAgent" in
+			''|none|environment) ;;
+			*) backupSshAuthSocket="$identityAgent" ;;
+		esac
+	fi
+
+	while IFS= read -r identityFile; do
+		case "$identityFile" in
+			"~/"*) identityFile="$backupInvokerHome/${identityFile#\~/}" ;;
+		esac
+		[ -f "$identityFile" ] || continue
+		backupSshIdentityFiles+=("$identityFile")
+	done < <(awk '$1 == "identityfile" && $2 != "none" { print $2 }' <<< "$sshDetails")
+
+	while IFS= read -r knownHostsFile; do
+		case "$knownHostsFile" in
+			"~/"*) knownHostsFile="$backupInvokerHome/${knownHostsFile#\~/}" ;;
+		esac
+		if [ -f "$knownHostsFile" ]; then
+			backupSshKnownHostsFile="$knownHostsFile"
+			break
+		fi
+	done < <(awk '$1 == "userknownhostsfile" { for (i = 2; i <= NF; i++) print $i; exit }' <<< "$sshDetails")
+}
+
 run_backup_backend() {
 	local sourceDirectory="$1"
 	local -a command=("$ribs" "$sourceDirectory" "$backupDestDirectory")
 	local -a backendEnvironment=(
-		"HOME=$HOME"
+		"HOME=$backupInvokerHome"
 		"ownFolderName=.dotfiles/backup"
 		"exclusionFileName=$runtimeExclusionFileName"
 		"interactiveMode=$interactiveMode"
@@ -796,8 +845,17 @@ run_backup_backend() {
 	if [[ -v backupDepth ]]; then
 		backendEnvironment+=("backupDepth=$backupDepth")
 	fi
-	if [ -n "${SSH_AUTH_SOCK:-}" ]; then
-		backendEnvironment+=("SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
+	if [ -n "$backupSshConfigFile" ]; then
+		backendEnvironment+=("SSH_CONFIG_FILE=$backupSshConfigFile")
+	fi
+	if [ -n "$backupSshAuthSocket" ]; then
+		backendEnvironment+=("SSH_AUTH_SOCK=$backupSshAuthSocket")
+	fi
+	if [ ${#backupSshIdentityFiles[@]} -gt 0 ]; then
+		backendEnvironment+=("SSH_IDENTITY_FILES=$(printf '%s\n' "${backupSshIdentityFiles[@]}")")
+	fi
+	if [ -n "$backupSshKnownHostsFile" ]; then
+		backendEnvironment+=("SSH_KNOWN_HOSTS_FILE=$backupSshKnownHostsFile")
 	fi
 	printf '%b' "$cRun" >&2
 	printf '%q ' "${command[@]}" >&2
@@ -955,6 +1013,8 @@ export ownFolderName=".dotfiles/backup"
 export exclusionFileName="$runtimeExclusionFileName"
 export interactiveMode="no"
 [ ! -t 0 ] || export interactiveMode="yes"
+
+prepare_backup_ssh_context
 
 if ! run_backup_backend "$backupRunSource"; then
 	if ! restore_backup_control_ownership; then
