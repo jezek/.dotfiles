@@ -15,19 +15,22 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS}" ]; then
 	fi
 fi
 
-# From every argument passed to this script.
-for arg in "$@"; do
-	# Get a picture from directory passed in argument.
-	arg="$arg"
-	picToUse=$($dotWallpaperChangerInstallDir"/getRandomWallpaper.sh" $arg)
-	res=$?
-	if [ $res -ne 0 ]; then
-		1>&2 echo -e $cErr"No picture returned from directory: "$cFile"${arg}"$cNone
-	else
-		# If a picture was returned (there was no error), break the cycle.
-		break
-	fi
-done
+if [ "$#" -eq 1 ] && [ -f "$1" ]; then
+	# A validated file from wallpaper-changer.sh is already the selected image.
+	picToUse="$1"
+else
+	# Try each configured directory until one contains an image.
+	for arg in "$@"; do
+		picToUse=$("$dotWallpaperChangerInstallDir/getRandomWallpaper.sh" "$arg")
+		res=$?
+		if [ $res -ne 0 ]; then
+			1>&2 echo -e $cErr"No picture returned from directory: "$cFile"${arg}"$cNone
+		else
+			# If a picture was returned (there was no error), break the cycle.
+			break
+		fi
+	done
+fi
 
 if [ -z "${picToUse}" ]; then
 	1>&2 echo -e $cErr"No pictures found in directory(ies): "$cFile"$@"$cNone

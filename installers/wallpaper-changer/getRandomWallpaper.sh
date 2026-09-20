@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Output of this script is a full path to a random image file (.jpg .jpeg .gif .png) from a directory and it's descendants provided in input.
+# Output of this script is a full path to a random image file (.jpg .jpeg .gif .png .webp) from a directory and it's descendants provided in input.
 # If there are multiple directories as arguments, the search is done in all of them.
 # If there are no directories in input arguments, the script results in error 1
 # If no images are found, the script results in error 2.
@@ -28,4 +28,4 @@ arrayPos=$RANDOM
 # get a random number less than length of array
 let "arrayPos%=${element_count}"
 picToUse=${images[$arrayPos]}
-echo $picToUse
+printf '%s\n' "$picToUse"
