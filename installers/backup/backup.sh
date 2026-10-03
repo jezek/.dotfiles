@@ -563,8 +563,8 @@ check_nested_btrfs_subvolumes() {
 		# Every Btrfs subvolume root has inode 256. Walk accessible content rather
 		# than using the privileged tree search, pruning excluded directories.
 		build_find_prune_arguments
-		if ! find "$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}" \
-			\( -mindepth 1 -type d -inum 256 -print0 -prune \) > "$nestedSubvolumesScanFile"; then
+		if ! find "$backupSourceDirectory" -xdev -mindepth 1 "${backupFindPruneArguments[@]}" \
+			\( -type d -inum 256 -print0 -prune \) > "$nestedSubvolumesScanFile"; then
 			echo 'Failed to scan nested Btrfs subvolumes.'
 			return 1
 		fi
