@@ -237,6 +237,24 @@ if [ "$backupSourceDirectory" = "$HOME" ]; then
 	unset commonHomeDirectory
 fi
 
+backupDepth=0
+backupRunAsRoot="no"
+if .check_yes_no "Run this backup with root privileges?"; then
+	backupRunAsRoot="yes"
+fi
+
+while true; do
+	echo -n "Warn before backing up files larger than how many GiB? [5]: "
+	read -r largeFileThresholdGiB
+	largeFileThresholdGiB="${largeFileThresholdGiB:-5}"
+	if [[ "$largeFileThresholdGiB" =~ ^[1-9][0-9]*$ ]]; then
+		backupLargeFileThresholdBytes=$((largeFileThresholdGiB * 1024 * 1024 * 1024))
+		break
+	fi
+	echo -e "$cErr""Please enter a positive integer number of GiB."$cNone
+done
+unset largeFileThresholdGiB
+
 echo -e "Deploying backup configuration:"
 
 .run "mkdir -p '${dotBackupDir}'"
@@ -252,7 +270,11 @@ configFile="${dotBackupDir}/config"
 .run "touch '$configFile'"
 printf "backupSourceDirectory=\"%s\"\n\
 backupDestRemote=\"%s\"\n\
-backupDestDirectory=\"%s\"\n" "$backupSourceDirectory" "$backupDestRemote" "$backupDestDirectory" | tee "$configFile"
+backupDestDirectory=\"%s\"\n\
+backupDepth=\"%s\"\n\
+backupRunAsRoot=\"%s\"\n\
+backupLargeFileThresholdBytes=\"%s\"\n" "$backupSourceDirectory" "$backupDestRemote" "$backupDestDirectory" \
+	"$backupDepth" "$backupRunAsRoot" "$backupLargeFileThresholdBytes" | tee "$configFile"
 echo
 
 linkFile="${dotfilesBin}/.backup"

@@ -17,8 +17,8 @@ if [ ! -f "$backupConfigFile" ]; then
 	exit 1
 fi
 
-unset backupSourceDirectory backupDestRemote backupDestDirectory backupDepth
-if ! .loadConfig "$backupConfigFile" backupSourceDirectory backupDestRemote backupDestDirectory backupDepth; then
+unset backupSourceDirectory backupDestRemote backupDestDirectory backupDepth backupRunAsRoot backupLargeFileThresholdBytes
+if ! .loadConfig "$backupConfigFile" backupSourceDirectory backupDestRemote backupDestDirectory backupDepth backupRunAsRoot backupLargeFileThresholdBytes; then
 	exit 2
 fi
 
@@ -30,13 +30,36 @@ for requiredVariable in backupSourceDirectory backupDestRemote backupDestDirecto
 done
 unset requiredVariable
 
-if [[ -v backupDepth ]]; then
-	if [[ ! "$backupDepth" =~ ^[1-9][0-9]*$ ]]; then
-		echo -e "$cErr""Invalid backup config: "$cNone"\$backupDepth must be a positive integer"
-		exit 2
-	fi
-	export backupDepth
+backupRunAsRoot="${backupRunAsRoot:-no}"
+backupDepthIdentity="${backupDepth-<default>}"
+backupDepth="${backupDepth:-0}"
+backupLargeFileThresholdBytes="${backupLargeFileThresholdBytes:-5368709120}"
+
+if [[ ! "$backupRunAsRoot" =~ ^(yes|no)$ ]]; then
+	echo -e "$cErr""Invalid backup config: "$cNone"\$backupRunAsRoot must be yes or no"
+	exit 2
 fi
+
+if [[ ! "$backupDepth" =~ ^[0-9]+$ ]]; then
+	echo -e "$cErr""Invalid backup config: "$cNone"\$backupDepth must be a non-negative integer"
+	exit 2
+fi
+export backupDepth
+
+if [[ ! "$backupLargeFileThresholdBytes" =~ ^[1-9][0-9]*$ ]]; then
+	echo -e "$cErr""Invalid backup config: "$cNone"\$backupLargeFileThresholdBytes must be a positive integer"
+	exit 2
+fi
+
+backupInvokerUser="${SUDO_USER:-$(id -un)}"
+backupInvokerGroup="$(id -gn "$backupInvokerUser" 2>/dev/null || id -gn)"
+backupInvokerHome="$HOME"
+if [ -n "${SUDO_USER:-}" ] && command -v getent >/dev/null 2>&1; then
+	if resolvedInvokerHome="$(getent passwd "$backupInvokerUser" | awk -F: 'NR == 1 { print $6; exit }')" && [ -n "$resolvedInvokerHome" ]; then
+		backupInvokerHome="$resolvedInvokerHome"
+	fi
+fi
+backupTargetOwner="${backupInvokerUser}:${backupInvokerGroup}"
 
 if ! backupSourceDirectory="$(realpath -e -- "$backupSourceDirectory")" || [ ! -d "$backupSourceDirectory" ]; then
 	echo -e "$cErr""Source directory does not exist: "$cFile"${backupSourceDirectory}"$cNone
@@ -70,7 +93,7 @@ backup_identity_fingerprint() {
 	local result
 	result="$({
 		printf 'source\0%s\0remote\0%s\0destination\0%s\0depth\0%s\0' \
-			"$backupSourceDirectory" "$backupDestRemote" "$backupDestDirectory" "${backupDepth-<default>}"
+			"$backupSourceDirectory" "$backupDestRemote" "$backupDestDirectory" "$backupDepthIdentity"
 		if [ -f "$backupExcludesFile" ]; then
 			printf 'excludes\0present\0'
 			cat -- "$backupExcludesFile"
@@ -164,10 +187,94 @@ join_path() {
 	fi
 }
 
+path_is_excluded() {
+	local relative="${1#/}" candidate controlRelative rule pattern directory anchored
+	if controlRelative="$(path_relative_to "$backupSourceDirectory" "$dotBackupDir")"; then
+		controlRelative="${controlRelative%/}"
+		if [ -n "$controlRelative" ] && \
+			{ [ "$relative" = "$controlRelative" ] || [[ "$relative" == "$controlRelative"/* ]]; }; then
+			return 0
+		fi
+	fi
+
+	for rule in "${backupExcludes[@]}"; do
+		rule="${rule#"${rule%%[![:space:]]*}"}"
+		rule="${rule%"${rule##*[![:space:]]}"}"
+		[[ "$rule" == '- '* ]] || continue
+
+		pattern="${rule#- }"
+		anchored=0
+		if [[ "$pattern" == /* ]]; then
+			anchored=1
+			pattern="${pattern#/}"
+		fi
+		directory=0
+		if [[ "$pattern" == */ ]]; then
+			directory=1
+			pattern="${pattern%/}"
+		fi
+
+		if [ "$directory" = 1 ]; then
+			candidate="$relative"
+			while [ -n "$candidate" ]; do
+				if { [ "$anchored" = 1 ] && [[ "$candidate" == $pattern ]]; } || \
+					{ [ "$anchored" = 0 ] && { [[ "$candidate" == $pattern ]] || [[ "$candidate" == */$pattern ]]; }; }; then
+					return 0
+				fi
+				[[ "$candidate" == */* ]] || break
+				candidate="${candidate%/*}"
+			done
+		elif { [ "$anchored" = 1 ] && [[ "$relative" == $pattern ]]; } || \
+			{ [ "$anchored" = 0 ] && { [[ "$relative" == $pattern ]] || [[ "$relative" == */$pattern ]]; }; }; then
+			return 0
+		fi
+	done
+	return 1
+}
+
+build_find_prune_arguments() {
+	local controlRelative rule pattern anchored findPattern
+	backupFindPruneArguments=()
+	if controlRelative="$(path_relative_to "$backupSourceDirectory" "$dotBackupDir")"; then
+		controlRelative="${controlRelative%/}"
+		if [ -n "$controlRelative" ]; then
+			backupFindPruneArguments+=(
+				-path "$(join_path "$backupSourceDirectory" "$controlRelative")"
+				-prune -o
+			)
+		fi
+	fi
+	for rule in "${backupExcludes[@]}"; do
+		rule="${rule#"${rule%%[![:space:]]*}"}"
+		rule="${rule%"${rule##*[![:space:]]}"}"
+		[[ "$rule" == '- '* ]] || continue
+		pattern="${rule#- }"
+		anchored=0
+		if [[ "$pattern" == /* ]]; then
+			anchored=1
+			pattern="${pattern#/}"
+		fi
+		[[ "$pattern" == */ ]] || continue
+		pattern="${pattern%/}"
+		[[ "$pattern" != *'*'* && "$pattern" != *'?'* && "$pattern" != *'['* ]] || continue
+		[ -n "$pattern" ] || continue
+		if [ "$anchored" = 1 ]; then
+			findPattern="$(join_path "$backupSourceDirectory" "$pattern")"
+		else
+			findPattern="$(join_path "$backupSourceDirectory" "*/$pattern")"
+		fi
+		backupFindPruneArguments+=(
+			-path "$findPattern"
+			-prune -o
+		)
+	done
+}
+
 stateFile="${dotBackupDir}/.btrfs-backup.state"
 runtimeExcludesFile="${dotBackupDir}/.exclude.runtime"
 runtimeExclusionFileName="${runtimeExcludesFile##*/}"
-trap 'rm -f -- "$runtimeExcludesFile"' EXIT
+largeFilesScanFile="${dotBackupDir}/.large-files.scan"
+trap 'rm -f -- "$runtimeExcludesFile" "$largeFilesScanFile"' EXIT
 
 # Questions are local to backup: never consume piped input as an answer.
 ask_backup_source() {
@@ -206,6 +313,93 @@ backup_privileged() {
 	else
 		sudo -n "$@"
 	fi
+}
+
+ensure_backup_root_available() {
+	if [ "$EUID" != 0 ] && ! command -v sudo >/dev/null 2>&1; then
+		echo -e "$cErr""Root privileges are required, but sudo is not installed."$cNone
+		return 1
+	fi
+}
+
+detect_inaccessible_paths() {
+	local path relative
+	local -a findArguments
+	backupInaccessiblePaths=()
+	build_find_prune_arguments
+	findArguments=("$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}")
+	findArguments+=(
+		\( -type l -prune \) -o
+		\( -type d \( ! -readable -o ! -executable \) -print0 -prune \) -o
+		\( ! -readable -print0 \)
+	)
+	while IFS= read -r -d '' path; do
+		relative="$(path_relative_to "$backupSourceDirectory" "$path")" || continue
+		[ -n "$relative" ] || continue
+		if ! path_is_excluded "$relative"; then
+			backupInaccessiblePaths+=("$relative")
+		fi
+	done < <(find "${findArguments[@]}" 2>/dev/null)
+}
+
+format_backup_size() {
+	if command -v numfmt >/dev/null 2>&1; then
+		numfmt --to=iec-i --suffix=B "$1"
+	else
+		printf '%s B' "$1"
+	fi
+}
+
+scan_large_files() {
+	local size path relative
+	local -a findArguments
+	backupLargeFiles=()
+	backupLargeFileSizes=()
+	: > "$largeFilesScanFile" || return 1
+	build_find_prune_arguments
+	findArguments=("$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}" -type f \
+		-size "+${backupLargeFileThresholdBytes}c" -printf '%s\0%p\0')
+
+	if [ "${backupContentRequiresRoot:-0}" = 1 ]; then
+		if ! backup_privileged find "${findArguments[@]}" > "$largeFilesScanFile"; then
+			return 1
+		fi
+	else
+		if ! find "${findArguments[@]}" > "$largeFilesScanFile" 2>/dev/null; then
+			return 1
+		fi
+	fi
+
+	while IFS= read -r -d '' size && IFS= read -r -d '' path; do
+		relative="$(path_relative_to "$backupSourceDirectory" "$path")" || continue
+		[ -n "$relative" ] || continue
+		if ! path_is_excluded "$relative"; then
+			backupLargeFiles+=("$relative")
+			backupLargeFileSizes+=("$size")
+		fi
+	done < "$largeFilesScanFile"
+}
+
+ask_backup_large_files() {
+	local answer
+	if [ ! -t 0 ]; then
+		printf 'Large non-excluded files found; backup cancelled because there is no TTY.\n'
+		return 1
+	fi
+	while :; do
+		printf 'Continue despite these large files? [y/N/q]: '
+		if ! IFS= read -r -n1 answer; then
+			printf '\nInput closed; backup cancelled.\n'
+			return 1
+		fi
+		printf '\n'
+		case "$answer" in
+			y|Y) return 0 ;;
+			''|n|N) return 1 ;;
+			q|Q) exit 130 ;;
+			*) echo 'Please answer y, n, or q to quit.' ;;
+		esac
+	done
 }
 
 snapshotKind=owned
@@ -599,98 +793,229 @@ prepare_runtime_excludes() {
 	fi
 }
 
+prepare_backup_ssh_context() {
+	local sshDetails identityAgent identityFile knownHostsFile
+	local -a sshConfigArguments=()
+	backupSshConfigFile=""
+	backupSshAuthSocket="${SSH_AUTH_SOCK:-}"
+	backupSshIdentityFiles=()
+	backupSshKnownHostsFile=""
+
+	[ -n "$backupDestRemote" ] || return 0
+
+	if [ -r "$backupInvokerHome/.ssh/config" ]; then
+		backupSshConfigFile="$backupInvokerHome/.ssh/config"
+		sshConfigArguments=(-F "$backupSshConfigFile")
+	fi
+	sshDetails="$(HOME="$backupInvokerHome" ssh "${sshConfigArguments[@]}" -G "$backupDestRemote" 2>/dev/null || true)"
+
+	if [ -z "$backupSshAuthSocket" ]; then
+		identityAgent="$(awk '$1 == "identityagent" { print $2; exit }' <<< "$sshDetails")"
+		case "$identityAgent" in
+			''|none|environment) ;;
+			*) backupSshAuthSocket="$identityAgent" ;;
+		esac
+	fi
+
+	while IFS= read -r identityFile; do
+		case "$identityFile" in
+			"~/"*) identityFile="$backupInvokerHome/${identityFile#\~/}" ;;
+		esac
+		[ -f "$identityFile" ] || continue
+		backupSshIdentityFiles+=("$identityFile")
+	done < <(awk '$1 == "identityfile" && $2 != "none" { print $2 }' <<< "$sshDetails")
+
+	while IFS= read -r knownHostsFile; do
+		case "$knownHostsFile" in
+			"~/"*) knownHostsFile="$backupInvokerHome/${knownHostsFile#\~/}" ;;
+		esac
+		if [ -f "$knownHostsFile" ]; then
+			backupSshKnownHostsFile="$knownHostsFile"
+			break
+		fi
+	done < <(awk '$1 == "userknownhostsfile" { for (i = 2; i <= NF; i++) print $i; exit }' <<< "$sshDetails")
+}
+
 run_backup_backend() {
 	local sourceDirectory="$1"
 	local -a command=("$ribs" "$sourceDirectory" "$backupDestDirectory")
+	local -a backendEnvironment=(
+		"HOME=$backupInvokerHome"
+		"ownFolderName=.dotfiles/backup"
+		"exclusionFileName=$runtimeExclusionFileName"
+		"interactiveMode=$interactiveMode"
+		"backupTargetOwner=$backupTargetOwner"
+	)
 	if [ -n "$backupDestRemote" ]; then
 		command+=("$backupDestRemote")
+	fi
+	if [[ -v backupDepth ]]; then
+		backendEnvironment+=("backupDepth=$backupDepth")
+	fi
+	if [ -n "$backupSshConfigFile" ]; then
+		backendEnvironment+=("SSH_CONFIG_FILE=$backupSshConfigFile")
+	fi
+	if [ -n "$backupSshAuthSocket" ]; then
+		backendEnvironment+=("SSH_AUTH_SOCK=$backupSshAuthSocket")
+	fi
+	if [ ${#backupSshIdentityFiles[@]} -gt 0 ]; then
+		backendEnvironment+=("SSH_IDENTITY_FILES=$(printf '%s\n' "${backupSshIdentityFiles[@]}")")
+	fi
+	if [ -n "$backupSshKnownHostsFile" ]; then
+		backendEnvironment+=("SSH_KNOWN_HOSTS_FILE=$backupSshKnownHostsFile")
 	fi
 	printf '%b' "$cRun" >&2
 	printf '%q ' "${command[@]}" >&2
 	printf '%b\n' "$cNone" >&2
-	"${command[@]}"
+	if [ "${backupContentRequiresRoot:-0}" = 1 ]; then
+		backup_privileged env "${backendEnvironment[@]}" "${command[@]}"
+	else
+		"${command[@]}"
+	fi
+}
+
+restore_backup_control_ownership() {
+	[ "${backupContentRequiresRoot:-0}" = 1 ] || return 0
+	backup_privileged chown -R -- "$backupTargetOwner" "$dotBackupDir"
 }
 
 if ! sourceFilesystem="$(findmnt -T "$backupSourceDirectory" -n -o FSTYPE)" || [ -z "$sourceFilesystem" ]; then
 	echo -e "$cErr""Could not detect source filesystem: "$cFile"${backupSourceDirectory}"$cNone
 	exit 4
 fi
+
 btrfsBackup=0
 backupRunSource="$backupSourceDirectory"
+btrfsSourcePrepared=0
+pendingSnapshotBackup=0
 
-if [ "$sourceFilesystem" = btrfs ]; then
+if [ -f "$stateFile" ]; then
+	if [ "$sourceFilesystem" != btrfs ]; then
+		echo -e "$cErr""A pending Btrfs backup state exists, but the configured source is no longer on Btrfs:"$cNone
+		echo -e "$cFile""${stateFile}"$cNone
+		exit 6
+	fi
+	if [ "$backupRunAsRoot" = no ]; then
+		echo -e "$cErr""A pending Btrfs backup state requires backupRunAsRoot=yes; source scans skipped:"$cNone
+		echo -e "$cFile""${stateFile}"$cNone
+		exit 6
+	fi
+	backupContentRequiresRoot=1
+	ensure_backup_root_available || exit 4
 	if ! find_btrfs_subvolume_root; then
 		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
 		exit 6
 	fi
-elif [ -f "$stateFile" ]; then
-	echo -e "$cErr""A pending Btrfs backup state exists, but the configured source is no longer on Btrfs:"$cNone
-	echo -e "$cFile""${stateFile}"$cNone
-	exit 6
-fi
+	btrfsSourcePrepared=1
 
-if [ "$sourceFilesystem" = btrfs ]; then
-	if [ -f "$stateFile" ]; then
-		if ! snapshot_tools_ready || ! load_backup_state || ! validate_loaded_state; then
-			echo 'Could not validate pending Btrfs backup state; state retained.'
+	printf 'Pending Btrfs backup state found; validating snapshot before source scans...\n'
+	if ! snapshot_tools_ready || ! load_backup_state || ! validate_loaded_state; then
+		echo 'Could not validate pending Btrfs backup state; state retained.'
+		exit 6
+	fi
+	snapshotKind="${backupState[snapshot_kind]}"
+	snapshotFsUuid="${backupState[snapshot_fs_uuid]}"
+	snapshotRelativePath="${backupState[snapshot_relative_path]}"
+	btrfsSnapshotPath="${backupState[snapshot_path]}"
+	btrfsSnapshotUuid="${backupState[snapshot_uuid]}"
+	if [ "${backupState[status]}" = cleanup_pending ]; then
+		cleanup_snapshot || exit 6
+		printf 'Pending cleanup completed; starting a fresh backup.\n'
+	elif ask_backup_source "Continue pending backup from $btrfsSnapshotPath? (n discards it; q discards it and quits)"; then
+		if [ "$snapshotKind" = timeshift ]; then
+			resolve_timeshift_snapshot || exit 6
+		elif [ "${backupState[status]}" = creating ]; then
+			prepare_owned_snapshot || exit 6
+		elif ! snapshot_exists || ! verify_btrfs_snapshot || [ "$btrfsSnapshotUuid" != "${backupState[snapshot_uuid]}" ]; then
+			echo 'Pending Btrfs snapshot is missing, invalid, or has a different UUID; state retained.'
 			exit 6
 		fi
-		snapshotKind="${backupState[snapshot_kind]}"
-		snapshotFsUuid="${backupState[snapshot_fs_uuid]}"
-		snapshotRelativePath="${backupState[snapshot_relative_path]}"
-		btrfsSnapshotPath="${backupState[snapshot_path]}"
-		btrfsSnapshotUuid="${backupState[snapshot_uuid]}"
-		if [ "${backupState[status]}" = cleanup_pending ]; then
-			cleanup_snapshot || exit 6
-		elif ask_backup_source "Continue pending backup from $btrfsSnapshotPath? (n discards it; q discards it and quits)"; then
-			if [ "$snapshotKind" = timeshift ]; then
-				resolve_timeshift_snapshot || exit 6
-			elif [ "${backupState[status]}" = creating ]; then
-				prepare_owned_snapshot || exit 6
-			elif ! snapshot_exists || ! verify_btrfs_snapshot || [ "$btrfsSnapshotUuid" != "${backupState[snapshot_uuid]}" ]; then
-				echo 'Pending Btrfs snapshot is missing, invalid, or has a different UUID; state retained.'
-				exit 6
-			fi
-			check_nested_btrfs_subvolumes || exit 6
-			btrfsBackup=1
-			printf 'Continuing backup from %s snapshot: %s\n' "$snapshotKind" "$btrfsSnapshotPath"
-		else
-			discard_pending_snapshot || exit 6
+		check_nested_btrfs_subvolumes || exit 6
+		btrfsBackup=1
+		pendingSnapshotBackup=1
+		printf 'Continuing backup from %s snapshot without rescanning source: %s\n' "$snapshotKind" "$btrfsSnapshotPath"
+	else
+		discard_pending_snapshot || exit 6
+		printf 'Pending snapshot discarded; scanning current source.\n'
+	fi
+fi
+
+if [ "$pendingSnapshotBackup" = 0 ]; then
+	backupContentRequiresRoot=0
+	if [ "$backupRunAsRoot" = yes ]; then
+		backupContentRequiresRoot=1
+		ensure_backup_root_available || exit 4
+	else
+		printf 'Scanning source for content requiring root privileges...\n'
+		detect_inaccessible_paths
+		if [ -f "$stateFile" ]; then
+			backupInaccessiblePaths+=("<pending Btrfs snapshot state: $stateFile>")
+		fi
+		if [ ${#backupInaccessiblePaths[@]} -gt 0 ]; then
+			echo -e "$cErr""Root privileges are required for non-excluded backup content:"$cNone
+			.toLines "${backupInaccessiblePaths[@]}"
+			echo 'Set backupRunAsRoot=yes or add only intentionally omitted paths to exclude.txt.'
+			exit 6
 		fi
 	fi
 
-	if [ "$btrfsBackup" = 0 ]; then
-		if find_timeshift_snapshot; then
-			if ask_backup_source 'Use this Timeshift snapshot?'; then
-				snapshotKind=timeshift
-				snapshotFsUuid="$btrfsSourceFsUuid"
-				if ! snapshot_tools_ready || ! verify_timeshift_snapshot || \
-					[ "$(btrfs_show_value "$btrfsSnapshotPath" id)" != "$timeshiftCandidateId" ]; then
-					echo 'Selected Timeshift snapshot could not be verified; backup stopped.'
-					exit 6
-				fi
-				check_nested_btrfs_subvolumes || exit 6
-				write_backup_state ready "$btrfsSnapshotUuid" || exit 6
-				btrfsBackup=1
-				printf 'Using Timeshift snapshot: %s\n' "$btrfsSnapshotPath"
-			fi
+	printf 'Scanning source for large non-excluded files...\n'
+	if ! scan_large_files; then
+		echo -e "$cErr""Could not scan for large non-excluded files"$cNone
+		exit 2
+	fi
+	if [ ${#backupLargeFiles[@]} -gt 0 ]; then
+		echo "Non-excluded files larger than $(format_backup_size "$backupLargeFileThresholdBytes") were found:"
+		for largeFileIndex in "${!backupLargeFiles[@]}"; do
+			printf '  %s\t%s\n' "$(format_backup_size "${backupLargeFileSizes[$largeFileIndex]}")" "${backupLargeFiles[$largeFileIndex]}"
+		done
+		if ! ask_backup_large_files; then
+			echo 'Backup cancelled because large non-excluded files were found.'
+			exit 130
 		fi
-		if [ "$btrfsBackup" = 0 ] && ask_backup_source 'Create a temporary read-only Btrfs snapshot for this backup?'; then
-			snapshotKind=owned
+	fi
+fi
+
+if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ] && [ "$btrfsSourcePrepared" = 0 ]; then
+	if ! find_btrfs_subvolume_root; then
+		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
+		exit 6
+	fi
+	btrfsSourcePrepared=1
+fi
+
+
+if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ]; then
+	if find_timeshift_snapshot; then
+		if ask_backup_source 'Use this Timeshift snapshot?'; then
+			snapshotKind=timeshift
 			snapshotFsUuid="$btrfsSourceFsUuid"
-			snapshotRelativePath=''
-			btrfsSnapshotPath="$ownedSnapshotPath"
-			snapshot_tools_ready || exit 6
-			if snapshot_exists; then
-				echo "Untracked snapshot already exists; refusing to reuse or delete it: $btrfsSnapshotPath"
+			if ! snapshot_tools_ready || ! verify_timeshift_snapshot || \
+				[ "$(btrfs_show_value "$btrfsSnapshotPath" id)" != "$timeshiftCandidateId" ]; then
+				echo 'Selected Timeshift snapshot could not be verified; backup stopped.'
 				exit 6
 			fi
 			check_nested_btrfs_subvolumes || exit 6
-			write_backup_state creating - || exit 6
-			prepare_owned_snapshot || exit 6
+			write_backup_state ready "$btrfsSnapshotUuid" || exit 6
 			btrfsBackup=1
-			printf 'Using temporary Btrfs snapshot: %s\n' "$btrfsSnapshotPath"
+			printf 'Using Timeshift snapshot: %s\n' "$btrfsSnapshotPath"
 		fi
+	fi
+	if [ "$btrfsBackup" = 0 ] && ask_backup_source 'Create a temporary read-only Btrfs snapshot for this backup?'; then
+		snapshotKind=owned
+		snapshotFsUuid="$btrfsSourceFsUuid"
+		snapshotRelativePath=''
+		btrfsSnapshotPath="$ownedSnapshotPath"
+		snapshot_tools_ready || exit 6
+		if snapshot_exists; then
+			echo "Untracked snapshot already exists; refusing to reuse or delete it: $btrfsSnapshotPath"
+			exit 6
+		fi
+		check_nested_btrfs_subvolumes || exit 6
+		write_backup_state creating - || exit 6
+		prepare_owned_snapshot || exit 6
+		btrfsBackup=1
+		printf 'Using temporary Btrfs snapshot: %s\n' "$btrfsSnapshotPath"
 	fi
 fi
 
@@ -714,9 +1039,19 @@ export exclusionFileName="$runtimeExclusionFileName"
 export interactiveMode="no"
 [ ! -t 0 ] || export interactiveMode="yes"
 
+prepare_backup_ssh_context
+
 if ! run_backup_backend "$backupRunSource"; then
+	if ! restore_backup_control_ownership; then
+		echo -e "$cErr""Backup failed and backup control files could not be returned to "$cFile"$backupTargetOwner"$cNone
+	fi
 	echo -e "$cErr""Error executing "$cFile"${ribs}"$cNone
 	exit 255
+fi
+
+if ! restore_backup_control_ownership; then
+	echo -e "$cErr""Backup succeeded, but backup control files could not be returned to "$cFile"$backupTargetOwner"$cNone
+	exit 6
 fi
 
 if [ "$btrfsBackup" = 1 ]; then

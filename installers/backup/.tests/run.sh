@@ -76,8 +76,31 @@ fi
 EOF
 	cat > "$caseRoot/fake-bin/sudo" <<'EOF'
 #!/bin/bash
+printf '%s\n' "$*" >> "$CASE_LOG/sudo"
 [ "${1:-}" != -n ] || shift
+if [ "${1:-}" = find ]; then
+	chmod 755 "$CASE_ROOT/live/jezek/root-only" 2>/dev/null || true
+fi
 exec "$@"
+EOF
+	cat > "$caseRoot/fake-bin/ssh" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$CASE_LOG/ssh"
+if [[ " $* " == *' -G '* ]]; then
+	printf 'identityagent %s\n' "$CASE_ROOT/ssh-agent.sock"
+	printf 'identityfile ~/.ssh/id_ed25519\n'
+	printf 'userknownhostsfile %s/.ssh/known_hosts\n' "$HOME"
+fi
+if [ "${SSH_FAKE_FAIL:-0}" = 1 ] && [[ " $* " != *' -G '* ]]; then
+	echo 'Permission denied (publickey).' >&2
+	exit 255
+fi
+exit 0
+EOF
+	cat > "$caseRoot/fake-bin/scp" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >> "$CASE_LOG/scp"
+exit 0
 EOF
 	cat > "$caseRoot/fake-bin/btrfs" <<'EOF'
 #!/bin/bash
@@ -140,10 +163,15 @@ setup_case() {
 		"$caseHome/.dotfiles/backup" "$caseRoot/live/jezek" "$caseLog"
 	cp "$repoRoot/installers/install.sh" "$caseHome/.dotfiles/installers/install.sh"
 	cp "$repoRoot/installers/backup/backup.sh" "$caseHome/.dotfiles/installers/backup/backup.sh"
+	cp "$repoRoot/installers/backup/rsync-incremental-backup/rsync-incremental-backup-remote" \
+		"$caseHome/.dotfiles/installers/backup/rsync-incremental-backup/rsync-incremental-backup-remote"
 	cat > "$caseHome/.dotfiles/backup/config" <<EOF
 backupSourceDirectory="$caseRoot/live/jezek"
 backupDestRemote=""
 backupDestDirectory="$caseRoot/destination"
+backupDepth="0"
+backupRunAsRoot="yes"
+backupLargeFileThresholdBytes="5368709120"
 EOF
 	: > "$caseHome/.dotfiles/backup/exclude.txt"
 	cat > "$caseHome/.dotfiles/installers/backup/rsync-incremental-backup/rsync-incremental-backup-local" <<'EOF'
@@ -160,11 +188,130 @@ EOF
 	write_timeshift_info 2024-01-03_00-00-00 300 upgrade 303
 }
 
+make_root_required() {
+	mkdir -p "$caseRoot/live/jezek/root-only"
+	chmod 000 "$caseRoot/live/jezek/root-only"
+}
+
+test_readable_source_does_not_use_sudo() {
+	setup_case readable-no-sudo
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_absent "$caseLog/sudo" "$FUNCNAME"
+	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
+}
+
+test_dangling_symlink_does_not_require_sudo_or_snapshot() {
+	setup_case dangling-symlink-no-sudo
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	ln -s /home/ubuntu/.dsh/profiles/web/node_modules/smart-buffer \
+		"$caseRoot/live/jezek/dangling-link"
+	run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_absent "$caseLog/sudo" "$FUNCNAME"
+	assert_not_contains 'Root privileges required' "$FUNCNAME"
+	assert_not_contains 'Timeshift' "$FUNCNAME"
+	assert_not_contains 'Btrfs snapshot' "$FUNCNAME"
+	assert_contains 'Scanning source for content requiring root privileges' "$FUNCNAME"
+	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
+}
+
+test_root_backend_preserves_user_environment() {
+	setup_case root-backend-environment
+	make_root_required
+	SSH_AUTH_SOCK="$caseRoot/ssh-agent.sock" run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_not_contains 'Scanning source for content requiring root privileges' "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "HOME=$caseHome" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" 'ownFolderName=.dotfiles/backup' "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" 'exclusionFileName=.exclude.runtime' "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" 'interactiveMode=no' "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" 'backupDepth=0' "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" 'backupTargetOwner=jezek:jezek' "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_AUTH_SOCK=$caseRoot/ssh-agent.sock" "$FUNCNAME"
+}
+
+test_root_remote_backend_uses_user_ssh_context() {
+	setup_case root-remote-ssh-context
+	mkdir -p "$caseHome/.ssh"
+	printf 'Host *\n\tIdentityAgent %s\n' "$caseRoot/ssh-agent.sock" > "$caseHome/.ssh/config"
+	: > "$caseHome/.ssh/id_ed25519"
+	: > "$caseHome/.ssh/known_hosts"
+	sed -i 's/backupDestRemote=""/backupDestRemote="jezek@fixture"/' "$caseHome/.dotfiles/backup/config"
+	run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "HOME=$caseHome" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_CONFIG_FILE=$caseHome/.ssh/config" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_AUTH_SOCK=$caseRoot/ssh-agent.sock" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_IDENTITY_FILES=$caseHome/.ssh/id_ed25519" "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" "SSH_KNOWN_HOSTS_FILE=$caseHome/.ssh/known_hosts" "$FUNCNAME"
+	assert_file_contains "$caseLog/ssh" "-F $caseHome/.ssh/config" "$FUNCNAME"
+	assert_file_contains "$caseLog/ssh" "IdentityFile=$caseHome/.ssh/id_ed25519" "$FUNCNAME"
+	assert_file_contains "$caseLog/ssh" "UserKnownHostsFile=$caseHome/.ssh/known_hosts" "$FUNCNAME"
+}
+
+test_remote_authentication_error_is_visible() {
+	setup_case remote-auth-failure
+	mkdir -p "$caseHome/.ssh"
+	printf 'Host *\n\tIdentityAgent %s\n' "$caseRoot/ssh-agent.sock" > "$caseHome/.ssh/config"
+	sed -i 's/backupDestRemote=""/backupDestRemote="jezek@fixture"/' "$caseHome/.dotfiles/backup/config"
+	SSH_FAKE_FAIL=1 run_non_tty
+	assert_status 255 "$FUNCNAME"
+	assert_contains 'Permission denied (publickey).' "$FUNCNAME"
+	assert_contains 'Remote destination is not reachable' "$FUNCNAME"
+}
+
+test_root_required_without_permission_aborts() {
+	setup_case root-without-permission
+	make_root_required
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	run_non_tty
+	assert_status 6 "$FUNCNAME"
+	assert_contains 'Root privileges are required' "$FUNCNAME"
+	assert_contains 'root-only' "$FUNCNAME"
+	assert_absent "$caseLog/sudo" "$FUNCNAME"
+	assert_absent "$caseLog/backend" "$FUNCNAME"
+}
+
+test_large_file_without_exclude_is_rejected_non_tty() {
+	setup_case large-file
+	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/large.bin"
+	run_non_tty
+	assert_status 130 "$FUNCNAME"
+	assert_contains 'Scanning source for large non-excluded files' "$FUNCNAME"
+	assert_contains 'large.bin' "$FUNCNAME"
+	assert_contains 'Backup cancelled because large non-excluded files were found' "$FUNCNAME"
+	assert_absent "$caseLog/backend" "$FUNCNAME"
+}
+
+test_large_file_tty_can_continue() {
+	setup_case large-file-tty
+	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/large.bin"
+	TIMESHIFT_AVAILABLE=0 run_tty yn
+	assert_status 0 "$FUNCNAME"
+	assert_contains 'Continue despite these large files?' "$FUNCNAME"
+	assert_file_contains "$caseLog/backend" "$caseRoot/live/jezek" "$FUNCNAME"
+}
+
+test_large_file_under_excluded_directory_is_ignored() {
+	setup_case excluded-large-file
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	mkdir -p "$caseRoot/live/jezek/models"
+	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/models/large.bin"
+	printf '%s\n' '- /models/' > "$caseHome/.dotfiles/backup/exclude.txt"
+	run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_not_contains 'Non-excluded files larger than' "$FUNCNAME"
+	assert_file_contains "$caseLog/backend" "$caseRoot/live/jezek" "$FUNCNAME"
+}
+
 run_non_tty() {
 	set +e
 	runOutput="$(HOME="$caseHome" PATH="$caseRoot/fake-bin:$PATH" \
 		TIMESHIFT_AVAILABLE="${TIMESHIFT_AVAILABLE:-1}" TIMESHIFT_HOME="${TIMESHIFT_HOME:-ts-home}" \
 		SOURCE_FSTYPE="${SOURCE_FSTYPE:-btrfs}" BACKEND_RC="${BACKEND_RC:-0}" \
+		SSH_FAKE_FAIL="${SSH_FAKE_FAIL:-0}" \
 		"$caseHome/.dotfiles/installers/backup/backup.sh" </dev/null 2>&1)"
 	runStatus=$?
 	set -e
@@ -193,7 +340,7 @@ write_v1_pending_state() {
 	mkdir -p "$snapshotPath/jezek"
 	fingerprint="$({
 		printf 'source\0%s\0remote\0%s\0destination\0%s\0depth\0%s\0' \
-			"$caseRoot/live/jezek" '' "$caseRoot/destination" '<default>'
+			"$caseRoot/live/jezek" '' "$caseRoot/destination" '0'
 		printf 'excludes\0present\0'
 		cat "$caseHome/.dotfiles/backup/exclude.txt"
 	} | sha256sum)"
@@ -215,6 +362,7 @@ EOF
 
 test_timeshift_default() {
 	setup_case timeshift-default
+	make_root_required
 	run_non_tty
 	assert_status 0 "$FUNCNAME"
 	assert_contains 'Yes (no TTY)' "$FUNCNAME"
@@ -226,6 +374,7 @@ test_timeshift_default() {
 
 test_enter_accepts_timeshift() {
 	setup_case timeshift-enter
+	make_root_required
 	run_tty $'\n'
 	assert_status 0 "$FUNCNAME"
 	assert_contains 'Using Timeshift snapshot' "$FUNCNAME"
@@ -234,6 +383,7 @@ test_enter_accepts_timeshift() {
 
 test_owned_default_without_timeshift() {
 	setup_case owned-default
+	make_root_required
 	TIMESHIFT_AVAILABLE=0 run_non_tty
 	assert_status 0 "$FUNCNAME"
 	assert_contains 'Timeshift is not running' "$FUNCNAME"
@@ -245,6 +395,7 @@ test_owned_default_without_timeshift() {
 
 test_decline_both_uses_live_source() {
 	setup_case direct
+	make_root_required
 	run_tty nn
 	assert_status 0 "$FUNCNAME"
 	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
@@ -263,6 +414,7 @@ test_non_btrfs_uses_live_source_without_questions() {
 
 test_q_stops_before_backup() {
 	setup_case quit
+	make_root_required
 	TIMESHIFT_AVAILABLE=0 run_tty q
 	assert_status 130 "$FUNCNAME"
 	assert_contains 'Backup cancelled' "$FUNCNAME"
@@ -271,6 +423,7 @@ test_q_stops_before_backup() {
 
 test_q_discards_v1_owned_snapshot() {
 	setup_case quit-pending
+	make_root_required
 	write_v1_pending_state
 	run_tty q
 	assert_status 130 "$FUNCNAME"
@@ -280,8 +433,31 @@ test_q_discards_v1_owned_snapshot() {
 	assert_absent "$caseLog/backend" "$FUNCNAME"
 }
 
+test_pending_snapshot_requires_root_without_scanning() {
+	setup_case pending-no-root
+	write_v1_pending_state
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	run_non_tty
+	assert_status 6 "$FUNCNAME"
+	assert_contains 'A pending Btrfs backup state requires backupRunAsRoot=yes' "$FUNCNAME"
+	assert_not_contains 'Scanning source' "$FUNCNAME"
+	assert_absent "$caseLog/backend" "$FUNCNAME"
+}
+
+test_declining_pending_snapshot_starts_fresh_backup() {
+	setup_case pending-decline
+	write_v1_pending_state
+	TIMESHIFT_AVAILABLE=0 run_tty nn
+	assert_status 0 "$FUNCNAME"
+	assert_contains 'Pending snapshot discarded; scanning current source' "$FUNCNAME"
+	assert_contains 'Scanning source for large non-excluded files' "$FUNCNAME"
+	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
+}
+
 test_timeshift_failure_resumes_after_mount_path_changes() {
 	setup_case timeshift-resume
+	make_root_required
 	BACKEND_RC=42 run_non_tty
 	assert_status 255 "$FUNCNAME first run"
 	assert_file_contains "$caseHome/.dotfiles/backup/.btrfs-backup.state" $'snapshot_kind\ttimeshift' "$FUNCNAME"
@@ -289,6 +465,7 @@ test_timeshift_failure_resumes_after_mount_path_changes() {
 	BACKEND_RC=0 TIMESHIFT_HOME=ts-home-next run_non_tty
 	assert_status 0 "$FUNCNAME second run"
 	assert_contains 'Continuing backup from timeshift snapshot' "$FUNCNAME"
+	assert_not_contains 'Scanning source' "$FUNCNAME"
 	assert_file_contains "$caseLog/backend" '/ts-home-next/timeshift-btrfs/snapshots/2024-01-02_00-00-00/@home/jezek' "$FUNCNAME"
 	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
 	[ ! -e "$caseLog/btrfs" ] || ! rg -q '^delete ' "$caseLog/btrfs" || fail "$FUNCNAME: deleted a Timeshift snapshot"
@@ -296,20 +473,32 @@ test_timeshift_failure_resumes_after_mount_path_changes() {
 
 test_owned_failure_resumes_and_deletes_after_success() {
 	setup_case owned-resume
+	make_root_required
 	BACKEND_RC=42 TIMESHIFT_AVAILABLE=0 run_non_tty
 	assert_status 255 "$FUNCNAME first run"
 	assert_file_contains "$caseHome/.dotfiles/backup/.btrfs-backup.state" $'snapshot_kind\towned' "$FUNCNAME"
 	[ -d "$(owned_snapshot_path)" ] || fail "$FUNCNAME: owned snapshot was not retained"
 	[ "$(rg -c '^snapshot ' "$caseLog/btrfs")" = 1 ] || fail "$FUNCNAME: snapshot was created more than once"
+	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/large.bin"
 	BACKEND_RC=0 TIMESHIFT_AVAILABLE=0 run_non_tty
 	assert_status 0 "$FUNCNAME second run"
 	assert_contains 'Continuing backup from owned snapshot' "$FUNCNAME"
+	assert_not_contains 'Scanning source' "$FUNCNAME"
 	assert_file_contains "$caseLog/btrfs" 'delete ' "$FUNCNAME"
 	assert_absent "$(owned_snapshot_path)" "$FUNCNAME"
 	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
 }
 
 for testFunction in \
+	test_readable_source_does_not_use_sudo \
+	test_dangling_symlink_does_not_require_sudo_or_snapshot \
+	test_root_backend_preserves_user_environment \
+	test_root_remote_backend_uses_user_ssh_context \
+	test_remote_authentication_error_is_visible \
+	test_root_required_without_permission_aborts \
+	test_large_file_without_exclude_is_rejected_non_tty \
+	test_large_file_tty_can_continue \
+	test_large_file_under_excluded_directory_is_ignored \
 	test_timeshift_default \
 	test_enter_accepts_timeshift \
 	test_owned_default_without_timeshift \
@@ -317,6 +506,8 @@ for testFunction in \
 	test_non_btrfs_uses_live_source_without_questions \
 	test_q_stops_before_backup \
 	test_q_discards_v1_owned_snapshot \
+	test_pending_snapshot_requires_root_without_scanning \
+	test_declining_pending_snapshot_starts_fresh_backup \
 	test_timeshift_failure_resumes_after_mount_path_changes \
 	test_owned_failure_resumes_and_deletes_after_success
 do
