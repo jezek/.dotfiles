@@ -233,13 +233,13 @@ path_is_excluded() {
 }
 
 build_find_prune_arguments() {
-	local controlRelative rule pattern anchored findPattern
+	local controlRelative rule pattern anchored findPattern scanRoot="${1:-$backupSourceDirectory}"
 	backupFindPruneArguments=()
 	if controlRelative="$(path_relative_to "$backupSourceDirectory" "$dotBackupDir")"; then
 		controlRelative="${controlRelative%/}"
 		if [ -n "$controlRelative" ]; then
 			backupFindPruneArguments+=(
-				-path "$(join_path "$backupSourceDirectory" "$controlRelative")"
+				-path "$(join_path "$scanRoot" "$controlRelative")"
 				-prune -o
 			)
 		fi
@@ -259,9 +259,9 @@ build_find_prune_arguments() {
 		[[ "$pattern" != *'*'* && "$pattern" != *'?'* && "$pattern" != *'['* ]] || continue
 		[ -n "$pattern" ] || continue
 		if [ "$anchored" = 1 ]; then
-			findPattern="$(join_path "$backupSourceDirectory" "$pattern")"
+			findPattern="$(join_path "$scanRoot" "$pattern")"
 		else
-			findPattern="$(join_path "$backupSourceDirectory" "*/$pattern")"
+			findPattern="$(join_path "$scanRoot" "*/$pattern")"
 		fi
 		backupFindPruneArguments+=(
 			-path "$findPattern"
@@ -274,7 +274,8 @@ stateFile="${dotBackupDir}/.btrfs-backup.state"
 runtimeExcludesFile="${dotBackupDir}/.exclude.runtime"
 runtimeExclusionFileName="${runtimeExcludesFile##*/}"
 largeFilesScanFile="${dotBackupDir}/.large-files.scan"
-trap 'rm -f -- "$runtimeExcludesFile" "$largeFilesScanFile"' EXIT
+nestedSubvolumesScanFile="${dotBackupDir}/.nested-subvolumes.scan"
+trap 'rm -f -- "$runtimeExcludesFile" "$largeFilesScanFile" "$nestedSubvolumesScanFile"' EXIT
 
 # Questions are local to backup: never consume piped input as an answer.
 ask_backup_source() {
@@ -323,19 +324,19 @@ ensure_backup_root_available() {
 }
 
 detect_inaccessible_paths() {
-	local path relative
+	local path relative scanRoot="${1:-$backupSourceDirectory}"
 	local -a findArguments
 	backupInaccessiblePaths=()
-	build_find_prune_arguments
-	findArguments=("$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}")
+	build_find_prune_arguments "$scanRoot"
+	findArguments=("$scanRoot" -xdev "${backupFindPruneArguments[@]}")
 	findArguments+=(
 		\( -type l -prune \) -o
 		\( -type d \( ! -readable -o ! -executable \) -print0 -prune \) -o
 		\( ! -readable -print0 \)
 	)
 	while IFS= read -r -d '' path; do
-		relative="$(path_relative_to "$backupSourceDirectory" "$path")" || continue
-		[ -n "$relative" ] || continue
+		relative="$(path_relative_to "$scanRoot" "$path")" || continue
+		[ -n "$relative" ] || relative=.
 		if ! path_is_excluded "$relative"; then
 			backupInaccessiblePaths+=("$relative")
 		fi
@@ -481,6 +482,12 @@ write_backup_state() {
 
 btrfs_show_value() {
 	local path="$1" field="$2" details
+	# GET_SUBVOL_INFO reads identity without sudo; btrfs show also searches the
+	# filesystem tree, which requires root even for an already mounted snapshot.
+	if [ "$EUID" != 0 ] && [ "${backupContentRequiresRoot:-0}" = 0 ]; then
+		python3 "${dotfilesDir}/installers/backup/btrfs-subvolume-info.py" "$path" "$field"
+		return $?
+	fi
 	if ! details="$(backup_privileged btrfs subvolume show "$path")"; then
 		return 1
 	fi
@@ -552,31 +559,49 @@ exclude_covers_path() {
 check_nested_btrfs_subvolumes() {
 	local output line topPath relativeToRoot nestedPath relativeToSource
 	local -a missing=()
-	if ! output="$(backup_privileged btrfs subvolume list "$btrfsSubvolumeRoot")"; then
-		echo -e "$cErr""Failed to list nested Btrfs subvolumes"$cNone
-		return 1
-	fi
+	if [ "${backupContentRequiresRoot:-0}" = 0 ]; then
+		# Every Btrfs subvolume root has inode 256. Walk accessible content rather
+		# than using the privileged tree search, pruning excluded directories.
+		build_find_prune_arguments
+		if ! find "$backupSourceDirectory" -xdev "${backupFindPruneArguments[@]}" \
+			\( -mindepth 1 -type d -inum 256 -print0 -prune \) > "$nestedSubvolumesScanFile"; then
+			echo 'Failed to scan nested Btrfs subvolumes.'
+			return 1
+		fi
+		while IFS= read -r -d '' nestedPath; do
+			[ "$nestedPath" = "$ownedSnapshotPath" ] && continue
+			relativeToSource="$(path_relative_to "$backupSourceDirectory" "$nestedPath")" || return 1
+			if ! exclude_covers_path "$relativeToSource"; then
+				missing+=("- /${relativeToSource%/}/")
+			fi
+		done < "$nestedSubvolumesScanFile"
+	else
+		if ! output="$(backup_privileged btrfs subvolume list "$btrfsSubvolumeRoot")"; then
+			echo -e "$cErr""Failed to list nested Btrfs subvolumes"$cNone
+			return 1
+		fi
 
-	while IFS= read -r line; do
-		[[ "$line" == *' path '* ]] || continue
-		topPath="${line#* path }"
-		if [ -z "$btrfsSubvolumeTopPath" ]; then
-			relativeToRoot="$topPath"
-		elif [[ "$topPath" == "$btrfsSubvolumeTopPath"/* ]]; then
-			relativeToRoot="${topPath#"$btrfsSubvolumeTopPath"/}"
-		else
-			continue
-		fi
-		nestedPath="$(join_path "$btrfsSubvolumeRoot" "$relativeToRoot")"
-		[ "$nestedPath" = "$ownedSnapshotPath" ] && continue
-		if ! relativeToSource="$(path_relative_to "$backupSourceDirectory" "$nestedPath")"; then
-			continue
-		fi
-		[ -z "$relativeToSource" ] && continue
-		if ! exclude_covers_path "$relativeToSource"; then
-			missing+=("- /${relativeToSource%/}/")
-		fi
-	done <<< "$output"
+		while IFS= read -r line; do
+			[[ "$line" == *' path '* ]] || continue
+			topPath="${line#* path }"
+			if [ -z "$btrfsSubvolumeTopPath" ]; then
+				relativeToRoot="$topPath"
+			elif [[ "$topPath" == "$btrfsSubvolumeTopPath"/* ]]; then
+				relativeToRoot="${topPath#"$btrfsSubvolumeTopPath"/}"
+			else
+				continue
+			fi
+			nestedPath="$(join_path "$btrfsSubvolumeRoot" "$relativeToRoot")"
+			[ "$nestedPath" = "$ownedSnapshotPath" ] && continue
+			if ! relativeToSource="$(path_relative_to "$backupSourceDirectory" "$nestedPath")"; then
+				continue
+			fi
+			[ -z "$relativeToSource" ] && continue
+			if ! exclude_covers_path "$relativeToSource"; then
+				missing+=("- /${relativeToSource%/}/")
+			fi
+		done <<< "$output"
+	fi
 
 	if [ ${#missing[@]} -gt 0 ]; then
 		echo -e "$cErr""Nested Btrfs subvolumes are not covered by exclude.txt:"$cNone
@@ -738,6 +763,10 @@ resolve_timeshift_snapshot() {
 
 snapshot_tools_ready() {
 	command -v btrfs >/dev/null 2>&1 || { echo 'Btrfs snapshot operations require btrfs.'; return 1; }
+	if [ "$EUID" != 0 ] && [ "${backupContentRequiresRoot:-0}" = 0 ] && ! command -v python3 >/dev/null 2>&1; then
+		echo 'Reading Btrfs subvolume identity without root requires python3.'
+		return 1
+	fi
 	btrfsSubvolumeUuid="$(btrfs_show_value "$btrfsSubvolumeRoot" uuid)" || return 1
 	[ -n "$btrfsSubvolumeUuid" ]
 }
@@ -895,13 +924,11 @@ if [ -f "$stateFile" ]; then
 		echo -e "$cFile""${stateFile}"$cNone
 		exit 6
 	fi
-	if [ "$backupRunAsRoot" = no ]; then
-		echo -e "$cErr""A pending Btrfs backup state requires backupRunAsRoot=yes; source scans skipped:"$cNone
-		echo -e "$cFile""${stateFile}"$cNone
-		exit 6
+	backupContentRequiresRoot=0
+	if [ "$backupRunAsRoot" = yes ]; then
+		backupContentRequiresRoot=1
+		ensure_backup_root_available || exit 4
 	fi
-	backupContentRequiresRoot=1
-	ensure_backup_root_available || exit 4
 	if ! find_btrfs_subvolume_root; then
 		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
 		exit 6
@@ -976,7 +1003,8 @@ if [ "$pendingSnapshotBackup" = 0 ]; then
 	fi
 fi
 
-if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ] && [ "$btrfsSourcePrepared" = 0 ]; then
+# Snapshot selection is independent of whether rsync needs root privileges.
+if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$btrfsSourcePrepared" = 0 ]; then
 	if ! find_btrfs_subvolume_root; then
 		echo -e "$cErr""Could not locate the Btrfs subvolume containing: "$cFile"${backupSourceDirectory}"$cNone
 		exit 6
@@ -985,7 +1013,7 @@ if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$ba
 fi
 
 
-if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ] && [ "$backupContentRequiresRoot" = 1 ]; then
+if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ]; then
 	if find_timeshift_snapshot; then
 		if ask_backup_source 'Use this Timeshift snapshot?'; then
 			snapshotKind=timeshift
@@ -1024,6 +1052,16 @@ if [ "$btrfsBackup" = 1 ]; then
 	if ! [ -d "$backupRunSource" ]; then
 		echo -e "$cErr""Source path is missing from Btrfs snapshot: "$cFile"${backupRunSource}"$cNone
 		exit 6
+	fi
+	if [ "$backupContentRequiresRoot" = 0 ]; then
+		# An older snapshot can contain unreadable files absent from the live source.
+		detect_inaccessible_paths "$backupRunSource"
+		if [ ${#backupInaccessiblePaths[@]} -gt 0 ]; then
+			echo 'Root privileges are required for non-excluded snapshot content:'
+			.toLines "${backupInaccessiblePaths[@]}"
+			echo 'Set backupRunAsRoot=yes or adjust exclude.txt before selecting a snapshot.'
+			exit 6
+		fi
 	fi
 else
 	printf 'Backing up directly without a snapshot: %s\n' "$backupRunSource"
