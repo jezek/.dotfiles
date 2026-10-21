@@ -647,7 +647,7 @@ plugins=(\
 	shell/bash shell/zsh/zplug \
 	vim vim/plug \
 	golang ipfs \
-	mc audacious \
+	mc kitty audacious \
 	fingerprint \
 	backup \
 	wallpaper-changer \
