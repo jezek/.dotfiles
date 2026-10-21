@@ -46,7 +46,9 @@ fi
 	fi
 
 	kittyConfigDirectory="${KITTY_CONFIG_DIRECTORY:-${XDG_CONFIG_HOME:-$HOME/.config}/kitty}"
-	if .copyConfig "$dotfilesDir/installers/kitty/kitty.conf" "$kittyConfigDirectory/kitty.conf"; then
+	mkdir -p -- "$kittyConfigDirectory" || return 1
+	# Rerun the installer to restore the hardlink after an editor or Git replaces a file.
+	if .hardlink "$dotfilesDir/installers/kitty/kitty.conf" "$kittyConfigDirectory/kitty.conf"; then
 		:
 	else
 		local kittyConfigResult=$?

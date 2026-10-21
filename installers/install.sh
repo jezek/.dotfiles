@@ -351,12 +351,12 @@ local pmi=$(.packageManagerInstall)
 
 	if [ -f "$source" ]; then # source exists
 
-		if [ $target -ef $source ]; then # source and target are equal files
+		if [ "$target" -ef "$source" ]; then # source and target are equal files
 			(>&2 echo -e "Hardlinking not needed, file "$cFile"${source}"$cNone" and "$cFile"${target}"$cNone" are the same (allready hardlinked).")
 			return 2 # allready linked
 		fi
 
-		if [ -f "$target" ] && ! .run "cmp -s $source $target"; then # target exists and differs from source
+		if [ -f "$target" ] && ! cmp -s "$source" "$target"; then # target exists and differs from source
 			if .check_yes_no "File "$cFile${target}$cNone" allready exists and differs. Overwrite with "$cFile${source}$cNone"?"; then
 				if .check_yes_no "Backup "$cFile${target}$cNone"?"; then
 					if ! .backup "$target"; then
