@@ -1,5 +1,13 @@
 #! /bin/bash
 
+export backupChecksum=no
+for argument in "$@"; do
+	case "$argument" in
+		--checksum) export backupChecksum=yes ;;
+		*) echo 'Usage: .backup [--checksum]' >&2; exit 2 ;;
+	esac
+done
+
 if [ -z "${dotfilesDir+x}" ]; then
 	source "$HOME/.dotfiles/installers/install.sh" essentials "$@"
 fi
@@ -275,7 +283,17 @@ runtimeExcludesFile="${dotBackupDir}/.exclude.runtime"
 runtimeExclusionFileName="${runtimeExcludesFile##*/}"
 largeFilesScanFile="${dotBackupDir}/.large-files.scan"
 nestedSubvolumesScanFile="${dotBackupDir}/.nested-subvolumes.scan"
-trap 'rm -f -- "$runtimeExcludesFile" "$largeFilesScanFile" "$nestedSubvolumesScanFile"' EXIT
+backupSudoKeeperPid=''
+cleanup_backup_process() {
+	if [ -n "$backupSudoKeeperPid" ]; then
+		kill "$backupSudoKeeperPid" 2>/dev/null || true
+		wait "$backupSudoKeeperPid" 2>/dev/null || true
+	fi
+	rm -f -- "$runtimeExcludesFile" "$largeFilesScanFile" "$nestedSubvolumesScanFile"
+}
+trap cleanup_backup_process EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Questions are local to backup: never consume piped input as an answer.
 ask_backup_source() {
@@ -309,18 +327,41 @@ ask_backup_source() {
 backup_privileged() {
 	if [ "$EUID" = 0 ]; then
 		"$@"
-	elif [ -t 0 ]; then
-		sudo "$@"
 	else
 		sudo -n "$@"
 	fi
 }
 
 ensure_backup_root_available() {
-	if [ "$EUID" != 0 ] && ! command -v sudo >/dev/null 2>&1; then
+	[ "$EUID" != 0 ] || return 0
+	if ! command -v sudo >/dev/null 2>&1; then
 		echo -e "$cErr""Root privileges are required, but sudo is not installed."$cNone
 		return 1
 	fi
+	[ -z "$backupSudoKeeperPid" ] || return 0
+	if [ -t 0 ]; then
+		sudo -v || return 1
+	else
+		sudo -n -v || return 1
+	fi
+	(
+		# Do not retain the backup lock or terminal input in the keeper.
+		exec {backupLockFd}>&-
+		sleepPid=''
+		trap '[ -z "$sleepPid" ] || kill "$sleepPid" 2>/dev/null || true' EXIT
+		trap 'exit 0' TERM INT
+		while :; do
+			sleep 60 &
+			sleepPid=$!
+			wait "$sleepPid" || exit 0
+			sleepPid=''
+			if ! sudo -n -v; then
+				echo 'Could not refresh sudo; subsequent privileged operations will fail without prompting.' >&2
+				exit 1
+			fi
+		done
+	) </dev/null >/dev/null &
+	backupSudoKeeperPid=$!
 }
 
 detect_inaccessible_paths() {
@@ -874,6 +915,7 @@ run_backup_backend() {
 		"exclusionFileName=$runtimeExclusionFileName"
 		"interactiveMode=$interactiveMode"
 		"backupTargetOwner=$backupTargetOwner"
+		"backupChecksum=$backupChecksum"
 	)
 	if [ -n "$backupDestRemote" ]; then
 		command+=("$backupDestRemote")
@@ -941,13 +983,19 @@ if [ -f "$stateFile" ]; then
 		exit 6
 	fi
 	snapshotKind="${backupState[snapshot_kind]}"
+	# Snapshot maintenance may need sudo even when the data transfer does not.
+	if [ "$snapshotKind" = owned ]; then
+		ensure_backup_root_available || exit 4
+	fi
 	snapshotFsUuid="${backupState[snapshot_fs_uuid]}"
 	snapshotRelativePath="${backupState[snapshot_relative_path]}"
 	btrfsSnapshotPath="${backupState[snapshot_path]}"
 	btrfsSnapshotUuid="${backupState[snapshot_uuid]}"
 	if [ "${backupState[status]}" = cleanup_pending ]; then
+		restore_backup_control_ownership || exit 6
 		cleanup_snapshot || exit 6
-		printf 'Pending cleanup completed; starting a fresh backup.\n'
+		printf 'Pending cleanup completed; backup is already finished.\n'
+		exit 0
 	elif ask_backup_source "Continue pending backup from $btrfsSnapshotPath? (n discards it; q discards it and quits)"; then
 		if [ "$snapshotKind" = timeshift ]; then
 			resolve_timeshift_snapshot || exit 6
@@ -1030,6 +1078,7 @@ if [ "$pendingSnapshotBackup" = 0 ] && [ "$sourceFilesystem" = btrfs ]; then
 		fi
 	fi
 	if [ "$btrfsBackup" = 0 ] && ask_backup_source 'Create a temporary read-only Btrfs snapshot for this backup?'; then
+		ensure_backup_root_available || exit 4
 		snapshotKind=owned
 		snapshotFsUuid="$btrfsSourceFsUuid"
 		snapshotRelativePath=''
@@ -1087,16 +1136,18 @@ if ! run_backup_backend "$backupRunSource"; then
 	exit 255
 fi
 
+# Record transfer success before any privileged finalization can fail.
+if [ "$btrfsBackup" = 1 ] && ! write_backup_state cleanup_pending "$btrfsSnapshotUuid"; then
+	echo -e "$cErr""Backup succeeded, but cleanup state could not be persisted."$cNone
+	exit 6
+fi
+
 if ! restore_backup_control_ownership; then
 	echo -e "$cErr""Backup succeeded, but backup control files could not be returned to "$cFile"$backupTargetOwner"$cNone
 	exit 6
 fi
 
 if [ "$btrfsBackup" = 1 ]; then
-	if ! write_backup_state cleanup_pending "$btrfsSnapshotUuid"; then
-		echo -e "$cErr""Backup succeeded, but cleanup state could not be persisted."$cNone
-		exit 6
-	fi
 	if ! cleanup_snapshot; then
 		echo -e "$cErr""Backup succeeded, but snapshot cleanup failed; the next run will retry it:"$cNone
 		echo -e "$cFile""${btrfsSnapshotPath}"$cNone

@@ -65,6 +65,21 @@ case "$field" in
 	*) exit 1 ;;
 esac
 EOF
+	cat > "$caseRoot/fake-bin/python3" <<'EOF'
+#!/bin/bash
+if [[ "${1:-}" == */btrfs-subvolume-info.py ]]; then
+	[ -f "$1" ] || exit 1
+	details="$(btrfs subvolume show "$2")" || exit 1
+	case "$3" in
+		uuid) awk '$1 == "UUID:" { print $2; exit }' <<< "$details" ;;
+		parent_uuid) awk '$1 == "Parent" && $2 == "UUID:" { print $3; exit }' <<< "$details" ;;
+		id) awk '$1 == "Subvolume" && $2 == "ID:" { print $3; exit }' <<< "$details" ;;
+		*) exit 1 ;;
+	esac
+else
+	exec /usr/bin/python3 "$@"
+fi
+EOF
 	cat > "$caseRoot/fake-bin/stat" <<'EOF'
 #!/bin/bash
 path="${!#}"
@@ -78,6 +93,13 @@ EOF
 #!/bin/bash
 printf '%s\n' "$*" >> "$CASE_LOG/sudo"
 [ "${1:-}" != -n ] || shift
+if [ "${1:-}" = -v ]; then
+	printf 'refresh\n' >> "$CASE_LOG/refresh"
+	exit "${SUDO_VALIDATE_RC:-0}"
+fi
+if [ "${1:-}" = chown ] && [ "${CHOWN_FAKE_FAIL:-0}" = 1 ]; then
+	exit 1
+fi
 if [ "${1:-}" = find ]; then
 	chmod 755 "$CASE_ROOT/live/jezek/root-only" 2>/dev/null || true
 fi
@@ -100,7 +122,15 @@ EOF
 	cat > "$caseRoot/fake-bin/scp" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$*" >> "$CASE_LOG/scp"
-exit 0
+exit "${SCP_FAKE_RC:-0}"
+EOF
+	cat > "$caseRoot/fake-bin/sleep" <<'EOF'
+#!/bin/bash
+if [ "${FAST_KEEPER:-0}" = 1 ] && [ "$1" = 60 ]; then
+	printf '%s\n' "$PPID" > "$CASE_LOG/keeper-pid"
+	exec /usr/bin/sleep 0.02
+fi
+exec /usr/bin/sleep "$@"
 EOF
 	cat > "$caseRoot/fake-bin/btrfs" <<'EOF'
 #!/bin/bash
@@ -125,6 +155,7 @@ case "$operation" in
 		printf 'snapshot %s %s\n' "$sourcePath" "$snapshotPath" >> "$CASE_LOG/btrfs"
 		;;
 	'subvolume delete')
+		[ "${BTRFS_DELETE_FAIL:-0}" = 0 ] || exit 1
 		snapshotPath="${@: -1}"
 		printf 'delete %s\n' "$snapshotPath" >> "$CASE_LOG/btrfs"
 		rm -rf -- "$snapshotPath"
@@ -135,6 +166,10 @@ esac
 EOF
 	cat > "$caseRoot/fake-bin/rsync" <<'EOF'
 #!/bin/bash
+printf '%s\n' "$*" >> "$CASE_LOG/rsync"
+if [[ " $* " == *' --progress '* ]]; then
+	exit "${RSYNC_DATA_RC:-0}"
+fi
 exit 0
 EOF
 	chmod +x "$caseRoot/fake-bin/"*
@@ -156,6 +191,7 @@ EOF
 }
 
 setup_case() {
+	backupArguments=()
 	caseRoot="$testRoot/$1"
 	caseHome="$caseRoot/home"
 	caseLog="$caseRoot/log"
@@ -163,6 +199,7 @@ setup_case() {
 		"$caseHome/.dotfiles/backup" "$caseRoot/live/jezek" "$caseLog"
 	cp "$repoRoot/installers/install.sh" "$caseHome/.dotfiles/installers/install.sh"
 	cp "$repoRoot/installers/backup/backup.sh" "$caseHome/.dotfiles/installers/backup/backup.sh"
+	cp "$repoRoot/installers/backup/btrfs-subvolume-info.py" "$caseHome/.dotfiles/installers/backup/btrfs-subvolume-info.py"
 	cp "$repoRoot/installers/backup/rsync-incremental-backup/rsync-incremental-backup-remote" \
 		"$caseHome/.dotfiles/installers/backup/rsync-incremental-backup/rsync-incremental-backup-remote"
 	cat > "$caseHome/.dotfiles/backup/config" <<EOF
@@ -177,6 +214,18 @@ EOF
 	cat > "$caseHome/.dotfiles/installers/backup/rsync-incremental-backup/rsync-incremental-backup-local" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$1" >> "$CASE_LOG/backend"
+if [ "${WAIT_FOR_REFRESH:-0}" = 1 ]; then
+	for ((i=0; i<200; i++)); do
+		if [ "$(wc -l < "$CASE_LOG/refresh")" -ge 2 ]; then
+			if [ "${INTERRUPT_BACKUP:-0}" = 1 ]; then
+				kill -TERM "$PPID"
+			fi
+			exit "${BACKEND_RC:-0}"
+		fi
+		/usr/bin/sleep 0.01
+	done
+	exit 99
+fi
 exit "${BACKEND_RC:-0}"
 EOF
 	chmod +x "$caseHome/.dotfiles/installers/backup/backup.sh" \
@@ -196,7 +245,7 @@ make_root_required() {
 test_readable_source_does_not_use_sudo() {
 	setup_case readable-no-sudo
 	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
-	run_non_tty
+	SOURCE_FSTYPE=ext4 run_non_tty
 	assert_status 0 "$FUNCNAME"
 	assert_absent "$caseLog/sudo" "$FUNCNAME"
 	assert_contains 'Backing up directly without a snapshot' "$FUNCNAME"
@@ -207,7 +256,7 @@ test_dangling_symlink_does_not_require_sudo_or_snapshot() {
 	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
 	ln -s /home/ubuntu/.dsh/profiles/web/node_modules/smart-buffer \
 		"$caseRoot/live/jezek/dangling-link"
-	run_non_tty
+	SOURCE_FSTYPE=ext4 run_non_tty
 	assert_status 0 "$FUNCNAME"
 	assert_absent "$caseLog/sudo" "$FUNCNAME"
 	assert_not_contains 'Root privileges required' "$FUNCNAME"
@@ -300,7 +349,7 @@ test_large_file_under_excluded_directory_is_ignored() {
 	mkdir -p "$caseRoot/live/jezek/models"
 	truncate -s $((6 * 1024 * 1024 * 1024)) "$caseRoot/live/jezek/models/large.bin"
 	printf '%s\n' '- /models/' > "$caseHome/.dotfiles/backup/exclude.txt"
-	run_non_tty
+	SOURCE_FSTYPE=ext4 run_non_tty
 	assert_status 0 "$FUNCNAME"
 	assert_not_contains 'Non-excluded files larger than' "$FUNCNAME"
 	assert_file_contains "$caseLog/backend" "$caseRoot/live/jezek" "$FUNCNAME"
@@ -312,7 +361,7 @@ run_non_tty() {
 		TIMESHIFT_AVAILABLE="${TIMESHIFT_AVAILABLE:-1}" TIMESHIFT_HOME="${TIMESHIFT_HOME:-ts-home}" \
 		SOURCE_FSTYPE="${SOURCE_FSTYPE:-btrfs}" BACKEND_RC="${BACKEND_RC:-0}" \
 		SSH_FAKE_FAIL="${SSH_FAKE_FAIL:-0}" \
-		"$caseHome/.dotfiles/installers/backup/backup.sh" </dev/null 2>&1)"
+		"$caseHome/.dotfiles/installers/backup/backup.sh" "${backupArguments[@]}" </dev/null 2>&1)"
 	runStatus=$?
 	set -e
 }
@@ -433,15 +482,53 @@ test_q_discards_v1_owned_snapshot() {
 	assert_absent "$caseLog/backend" "$FUNCNAME"
 }
 
-test_pending_snapshot_requires_root_without_scanning() {
+test_pending_owned_snapshot_without_root_transfer() {
 	setup_case pending-no-root
 	write_v1_pending_state
 	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
 	run_non_tty
-	assert_status 6 "$FUNCNAME"
-	assert_contains 'A pending Btrfs backup state requires backupRunAsRoot=yes' "$FUNCNAME"
+	assert_status 0 "$FUNCNAME"
+	assert_contains 'Continuing backup from owned snapshot' "$FUNCNAME"
 	assert_not_contains 'Scanning source' "$FUNCNAME"
+	assert_file_contains "$caseLog/sudo" '-n -v' "$FUNCNAME"
+	! rg -q ' env ' "$caseLog/sudo" || fail "$FUNCNAME: transferred data as root"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
+}
+
+test_timeshift_without_root_never_uses_sudo() {
+	setup_case timeshift-no-root
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	BACKEND_RC=42 run_non_tty
+	assert_status 255 "$FUNCNAME first run"
+	run_non_tty
+	assert_status 0 "$FUNCNAME resume"
+	assert_contains 'Continuing backup from timeshift snapshot' "$FUNCNAME"
+	assert_absent "$caseLog/sudo" "$FUNCNAME"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
+	assert_absent "$caseHome/.dotfiles/backup/.nested-subvolumes.scan" "$FUNCNAME"
+}
+
+test_unreadable_snapshot_content_requires_root() {
+	setup_case unreadable-snapshot
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	mkdir -p "$caseRoot/ts-home/timeshift-btrfs/snapshots/2024-01-02_00-00-00/@home/jezek/root-only"
+	chmod 000 "$caseRoot/ts-home/timeshift-btrfs/snapshots/2024-01-02_00-00-00/@home/jezek/root-only"
+	run_non_tty
+	assert_status 6 "$FUNCNAME"
+	assert_contains 'Root privileges are required for non-excluded snapshot content' "$FUNCNAME"
 	assert_absent "$caseLog/backend" "$FUNCNAME"
+	assert_absent "$caseLog/sudo" "$FUNCNAME"
+}
+
+test_owned_snapshot_without_root_transfer() {
+	setup_case owned-no-root
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	TIMESHIFT_AVAILABLE=0 run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_file_contains "$caseLog/btrfs" 'snapshot ' "$FUNCNAME"
+	assert_file_contains "$caseLog/btrfs" 'delete ' "$FUNCNAME"
+	! rg -q ' env ' "$caseLog/sudo" || fail "$FUNCNAME: transferred data as root"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
 }
 
 test_declining_pending_snapshot_starts_fresh_backup() {
@@ -489,7 +576,135 @@ test_owned_failure_resumes_and_deletes_after_success() {
 	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
 }
 
+test_cleanup_failure_does_not_repeat_transfer() {
+	setup_case cleanup-failure
+	BTRFS_DELETE_FAIL=1 TIMESHIFT_AVAILABLE=0 run_non_tty
+	assert_status 6 "$FUNCNAME first run"
+	assert_file_contains "$caseHome/.dotfiles/backup/.btrfs-backup.state" $'status\tcleanup_pending' "$FUNCNAME"
+	TIMESHIFT_AVAILABLE=0 run_non_tty
+	assert_status 0 "$FUNCNAME retry"
+	assert_contains 'backup is already finished' "$FUNCNAME"
+	[ "$(wc -l < "$caseLog/backend")" = 1 ] || fail "$FUNCNAME: repeated transfer"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
+}
+
+test_ownership_failure_does_not_repeat_transfer() {
+	setup_case ownership-failure
+	CHOWN_FAKE_FAIL=1 TIMESHIFT_AVAILABLE=0 run_non_tty
+	assert_status 6 "$FUNCNAME first run"
+	assert_file_contains "$caseHome/.dotfiles/backup/.btrfs-backup.state" $'status\tcleanup_pending' "$FUNCNAME"
+	TIMESHIFT_AVAILABLE=0 run_non_tty
+	assert_status 0 "$FUNCNAME retry"
+	[ "$(wc -l < "$caseLog/backend")" = 1 ] || fail "$FUNCNAME: repeated transfer"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
+}
+
+test_sudo_validation_failure_stops_before_transfer() {
+	setup_case sudo-validation-failure
+	SUDO_VALIDATE_RC=1 run_non_tty
+	assert_status 4 "$FUNCNAME"
+	assert_absent "$caseLog/backend" "$FUNCNAME"
+}
+
+test_sudo_refresh_and_keeper_cleanup() {
+	setup_case sudo-refresh
+	SOURCE_FSTYPE=ext4 FAST_KEEPER=1 WAIT_FOR_REFRESH=1 run_non_tty
+	assert_status 0 "$FUNCNAME"
+	[ "$(wc -l < "$caseLog/refresh")" -ge 2 ] || fail "$FUNCNAME: did not refresh sudo"
+	while IFS= read -r invocation; do
+		[[ "$invocation" == '-n '* ]] || fail "$FUNCNAME: interactive sudo after startup: $invocation"
+	done < "$caseLog/sudo"
+	! kill -0 "$(cat "$caseLog/keeper-pid")" 2>/dev/null || fail "$FUNCNAME: keeper survived backup"
+}
+
+test_sudo_prompts_only_at_start_in_terminal() {
+	setup_case sudo-terminal
+	SOURCE_FSTYPE=ext4 FAST_KEEPER=1 WAIT_FOR_REFRESH=1 run_tty ''
+	assert_status 0 "$FUNCNAME"
+	[ "$(head -n 1 "$caseLog/sudo")" = -v ] || fail "$FUNCNAME: missing initial authentication"
+	[ "$(rg -c '^-v$' "$caseLog/sudo")" = 1 ] || fail "$FUNCNAME: repeated interactive authentication"
+	[ "$(wc -l < "$caseLog/refresh")" -ge 2 ] || fail "$FUNCNAME: did not refresh authentication"
+	! kill -0 "$(cat "$caseLog/keeper-pid")" 2>/dev/null || fail "$FUNCNAME: keeper survived backup"
+}
+
+test_sudo_keeper_stops_on_interruption() {
+	setup_case sudo-interruption
+	SOURCE_FSTYPE=ext4 FAST_KEEPER=1 WAIT_FOR_REFRESH=1 INTERRUPT_BACKUP=1 run_non_tty
+	assert_status 143 "$FUNCNAME"
+	! kill -0 "$(cat "$caseLog/keeper-pid")" 2>/dev/null || fail "$FUNCNAME: keeper survived interruption"
+}
+
+test_remote_transfer_failure_retains_snapshot() {
+	setup_case remote-transfer-failure
+	sed -i 's/backupDestRemote=""/backupDestRemote="jezek@fixture"/' "$caseHome/.dotfiles/backup/config"
+	RSYNC_DATA_RC=23 TIMESHIFT_AVAILABLE=0 run_non_tty
+	assert_status 255 "$FUNCNAME"
+	assert_file_contains "$caseHome/.dotfiles/backup/.btrfs-backup.state" $'status\tready' "$FUNCNAME"
+	[ -d "$(owned_snapshot_path)" ] || fail "$FUNCNAME: snapshot lost"
+	assert_file_contains "$caseLog/ssh" '-O exit' "$FUNCNAME"
+}
+
+test_local_checksum_detects_preserved_size_and_time() {
+	setup_case local-checksum
+	cp "$repoRoot/installers/backup/rsync-incremental-backup/rsync-incremental-backup-local" \
+		"$caseHome/.dotfiles/installers/backup/rsync-incremental-backup/rsync-incremental-backup-local"
+	ln -sf /usr/bin/rsync "$caseRoot/fake-bin/rsync"
+	sed -i 's/backupRunAsRoot="yes"/backupRunAsRoot="no"/' "$caseHome/.dotfiles/backup/config"
+	printf alpha > "$caseRoot/live/jezek/payload"
+	SOURCE_FSTYPE=ext4 run_non_tty
+	assert_status 0 "$FUNCNAME first run"
+	printf omega > "$caseRoot/live/jezek/payload"
+	touch -r "$caseRoot/destination/data/payload" "$caseRoot/live/jezek/payload"
+	SOURCE_FSTYPE=ext4 run_non_tty
+	assert_status 0 "$FUNCNAME quick check"
+	[ "$(cat "$caseRoot/destination/data/payload")" = alpha ] || fail "$FUNCNAME: quick check unexpectedly read content"
+	backupArguments=(--checksum)
+	SOURCE_FSTYPE=ext4 run_non_tty
+	assert_status 0 "$FUNCNAME checksum"
+	[ "$(cat "$caseRoot/destination/data/payload")" = omega ] || fail "$FUNCNAME: checksum did not detect change"
+}
+
+test_remote_log_failure_preserves_transfer_success() {
+	setup_case remote-log-failure
+	sed -i 's/backupDestRemote=""/backupDestRemote="jezek@fixture"/' "$caseHome/.dotfiles/backup/config"
+	SCP_FAKE_RC=1 TIMESHIFT_AVAILABLE=0 run_non_tty
+	assert_status 0 "$FUNCNAME"
+	assert_contains 'Log upload failed; retained locally' "$FUNCNAME"
+	assert_absent "$caseHome/.dotfiles/backup/.btrfs-backup.state" "$FUNCNAME"
+	find "$caseHome/.dotfiles/backup" -name '*.log' | rg -q . || fail "$FUNCNAME: log lost"
+	assert_file_contains "$caseLog/ssh" 'BatchMode=yes' "$FUNCNAME"
+	assert_file_contains "$caseLog/ssh" 'ControlPersist=yes' "$FUNCNAME"
+	assert_file_contains "$caseLog/scp" 'BatchMode=yes' "$FUNCNAME"
+}
+
+test_checksum_is_opt_in() {
+	setup_case checksum-default
+	sed -i 's/backupDestRemote=""/backupDestRemote="jezek@fixture"/' "$caseHome/.dotfiles/backup/config"
+	run_non_tty
+	assert_status 0 "$FUNCNAME default"
+	assert_file_contains "$caseLog/rsync" '-ahvz --progress' "$FUNCNAME"
+	! rg -q -- '--checksum' "$caseLog/rsync" || fail "$FUNCNAME: default checksums enabled"
+	backupArguments=(--checksum)
+	run_non_tty
+	assert_status 0 "$FUNCNAME checksum"
+	assert_file_contains "$caseLog/rsync" '--checksum' "$FUNCNAME"
+	backupArguments=(--unknown)
+	run_non_tty
+	assert_status 2 "$FUNCNAME invalid option"
+	assert_contains 'Usage: .backup [--checksum]' "$FUNCNAME"
+}
+
 for testFunction in \
+	test_sudo_prompts_only_at_start_in_terminal \
+	test_sudo_keeper_stops_on_interruption \
+	test_remote_transfer_failure_retains_snapshot \
+	test_local_checksum_detects_preserved_size_and_time \
+	test_cleanup_failure_does_not_repeat_transfer \
+	test_ownership_failure_does_not_repeat_transfer \
+	test_sudo_validation_failure_stops_before_transfer \
+	test_sudo_refresh_and_keeper_cleanup \
+	test_remote_log_failure_preserves_transfer_success \
+	test_checksum_is_opt_in \
 	test_readable_source_does_not_use_sudo \
 	test_dangling_symlink_does_not_require_sudo_or_snapshot \
 	test_root_backend_preserves_user_environment \
@@ -506,7 +721,10 @@ for testFunction in \
 	test_non_btrfs_uses_live_source_without_questions \
 	test_q_stops_before_backup \
 	test_q_discards_v1_owned_snapshot \
-	test_pending_snapshot_requires_root_without_scanning \
+	test_pending_owned_snapshot_without_root_transfer \
+	test_timeshift_without_root_never_uses_sudo \
+	test_owned_snapshot_without_root_transfer \
+	test_unreadable_snapshot_content_requires_root \
 	test_declining_pending_snapshot_starts_fresh_backup \
 	test_timeshift_failure_resumes_after_mount_path_changes \
 	test_owned_failure_resumes_and_deletes_after_success
